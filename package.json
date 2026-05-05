@@ -1,6 +1,6 @@
 {
   "name": "pi-mgrep",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Unified search extension for Pi coding agent — mgrep semantic search + DuckDuckGo fallback. Auto-installs mgrep. Zero config.",
   "keywords": [
     "pi",
