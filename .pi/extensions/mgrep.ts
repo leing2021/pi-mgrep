@@ -57,7 +57,7 @@ function resolveMgrep(): Promise<string | null> {
 			} else {
 				console.error("[pi-mgrep] Auto-install failed:", e.message?.slice(0, 80));
 			}
-		} catch {}
+		}
 
 		return null;
 	})();
