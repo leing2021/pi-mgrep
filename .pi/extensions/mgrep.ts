@@ -268,13 +268,13 @@ export default function searchExtension(pi: ExtensionAPI) {
 		],
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query in natural language" }),
-			count: Type.Optional(Type.Number({ description: "Max results (default 3)", default: 3 })),
+			count: Type.Optional(Type.Number({ description: "Max results (default 5)", default: 5 })),
 			answer: Type.Optional(Type.Boolean({
 				description: "Return an AI-generated answer summary instead of just URLs (default false)",
 			})),
 		}),
 		async execute(_id, params) {
-			const n = params.count ?? 3;
+			const n = params.count ?? 5;
 			const args = ["search", "-w", "-c", "-m", String(n * 3), params.query, "/tmp/mgrep-empty"];
 			if (params.answer) args.push("-a");
 
