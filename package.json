@@ -1,15 +1,15 @@
 {
   "name": "pi-mgrep",
   "version": "0.1.1",
-  "description": "Unified search extension for Pi coding agent — ripgrep + mgrep + DuckDuckGo fallback",
+  "description": "Unified search extension for Pi coding agent — mgrep semantic search + DuckDuckGo fallback. Auto-installs mgrep. Zero config.",
   "keywords": [
     "pi",
     "pi-extension",
     "search",
     "mgrep",
-    "ripgrep",
     "web-search",
-    "duckduckgo"
+    "duckduckgo",
+    "semantic-search"
   ],
   "author": "Jason Le",
   "license": "MIT",

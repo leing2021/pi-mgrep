@@ -1,62 +1,52 @@
 # pi-mgrep
 
-> Unified search extension for [Pi Coding Agent](https://github.com/badlogic/pi-mono) — semantic search + exact grep + web fallback in one file.
+> One dependency. Zero config. Auto-installs itself.
+
+Unified search extension for [Pi Coding Agent](https://github.com/badlogic/pi-mono) — semantic search + web search + page reading. mgrep handles everything.
 
 ## Quick Start
 
 ```bash
-# 1. Install mgrep CLI
-npm install -g @mixedbread/mgrep
-mgrep login   # one-time device auth
+# Install
+npm install -g pi-mgrep
 
-# 2. Install this extension
-mkdir -p ~/.pi/agent/extensions
-cp .pi/extensions/mgrep.ts ~/.pi/agent/extensions/mgrep.ts
-
-# 3. Restart pi — done
+# Restart pi — done.
+# mgrep auto-installs on first use if missing.
 ```
+
+**No ripgrep. No manual mgrep install. No API key required.**
 
 ## What it gives you
 
-Three LLM-callable tools, automatically registered:
+Three LLM-callable tools, automatically registered.
 
-### `search` — Local Intelligent Router
+### `search` — Local Search
 
-Auto-selects the right engine based on the query pattern:
-
-| Query Pattern | Engine | Speed |
-|:---|:---|:---|
-| `registerTool` (camelCase) | **ripgrep** | 0.02s |
-| `calculate_total` (snake_case) | **ripgrep** | 0.02s |
-| `app.tsx` (file extension) | **ripgrep** | 0.02s |
-| `how to handle errors` (NL) | **mgrep** | 3-8s |
+mgrep semantic search. Works for exact symbols AND natural language.
 
 ```typescript
-// LLM calls this automatically:
 search({ query: "registerTool" })
-// → ripgrep 0.02s, returns file + line matches
+// → exact match with file + line context
 
 search({ query: "error handling logic", answer: true })
-// → mgrep semantic search, returns AI-generated summary
+// → AI-generated summary of relevant code
 ```
 
 ### `web_search` — Internet Search
 
-Semantic search the web via mgrep, with automatic DuckDuckGo fallback.
+mgrep web with automatic DuckDuckGo fallback.
 
 ```typescript
 web_search({ query: "React 19 new features" })
 // → 3 ranked URLs with match scores
 
 web_search({ query: "React 19 new features", answer: true })
-// → AI-generated answer with citations instead of URL list
+// → AI-generated answer with citations
 ```
-
-**Fallback chain:** mgrep web (primary) → DuckDuckGo HTML scraping (automatic on failure)
 
 ### `web_fetch` — Page Reader
 
-Fetch a URL, strip HTML, return clean text.
+Fetch URL, strip HTML, return plain text.
 
 ```typescript
 web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
@@ -71,59 +61,59 @@ web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
 | `/web <query>` | Web search with AI summary |
 | `/fetch <url>` | Fetch and display URL content |
 
-## Architecture
+## How it works
 
 ```
-┌─ search (local) ──────────────────────────────────────────┐
-│  Intelligent routing:                                      │
-│    code patterns → ripgrep (0.02s, offline)                │
-│    natural lang  → mgrep   (3-8s, semantic)                │
-│  Fallback: mgrep ↓ → ripgrep                               │
-├─ web_search (internet) ───────────────────────────────────┤
-│  Primary:  mgrep web   (semantic + reranking)              │
-│  Fallback: DuckDuckGo  (HTML scraping, no API key needed)  │
-│  Isolation: points to /tmp/mgrep-empty (no local mixing)   │
-├─ web_fetch (page reader) ─────────────────────────────────┤
-│  curl + Node.js HTML→text extraction                       │
-│  No external dependencies                                   │
-└────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│  Extension loads                                          │
+│  ├─ resolveMgrep() → found on PATH? → use it              │
+│  ├─ not found? → npm install -g @mixedbread/mgrep         │
+│  └─ still not found? → tools return helpful error         │
+├───────────────────────────────────────────────────────────┤
+│  Tool: search                                              │
+│    query → mgrep search -s -c -m 5 <query> <path>         │
+│    answer=true? → adds -a (AI summary)                    │
+├───────────────────────────────────────────────────────────┤
+│  Tool: web_search                                          │
+│    primary → mgrep search -w -m <n*3> /tmp/mgrep-empty    │
+│    fail?  → DuckDuckGo HTML scraping (zero-dependency)    │
+├───────────────────────────────────────────────────────────┤
+│  Tool: web_fetch                                           │
+│    url → Node.js http.get → HTML strip → plain text       │
+│    100% self-contained, no external deps                   │
+└───────────────────────────────────────────────────────────┘
 ```
-
-## Requirements
-
-- **Pi Coding Agent** ≥ 0.73.0
-- **mgrep CLI** (`npm install -g @mixedbread/mgrep`)
-- **ripgrep** (optional — local semantic search auto-upgrades to mgrep if unavailable)
 
 ## Authentication
 
-mgrep requires authentication to Mixedbread's API. Two options:
+mgrep needs auth to Mixedbread's API. Two ways:
 
-### Option A: Device login (7-day expiry)
+### Device login (7-day expiry)
 
 ```bash
 mgrep login
-# opens browser → authorize → token saved to ~/.mgrep/token.json
-# must re-login every 7 days
+# browser → authorize → token saved
+# repeat every 7 days
 ```
 
-### Option B: API key (recommended, permanent)
+### API key (recommended, permanent)
 
-1. Go to [Mixedbread Platform](https://www.platform.mixedbread.com)
-2. Sign up / Sign in
-3. Create an API key from the dashboard
-4. Export it in your shell profile:
+1. [Mixedbread Platform](https://www.platform.mixedbread.com) → sign up
+2. Create API key from dashboard
+3. Export in shell profile:
 
 ```bash
-# ~/.zshrc (or ~/.bashrc)
+# ~/.zshrc
 export MXBAI_API_KEY="mxb_your_key_here"
 ```
 
-API key takes priority over device login and never expires. Ideal for CI/CD and daily use.
+## Design choices
 
-## Tokens
-
-Adds ~400 tokens to system prompt (3 tool definitions). Negligible on 128K+ context windows.
+- **mgrep-only** — no ripgrep dependency. mgrep handles exact patterns and semantic search
+- **Auto-install** — if mgrep is missing, extension runs `npm install -g @mixedbread/mgrep` on first use
+- **Fallback chain** — mgrep web → DuckDuckGo. Web search survives API outages
+- **Isolated web results** — `/tmp/mgrep-empty` ensures web search never mixes with local files
+- **Output limits** — 6000 char hard cap on all tools, safe for any context window
 
 ## File Structure
 
@@ -131,7 +121,7 @@ Adds ~400 tokens to system prompt (3 tool definitions). Negligible on 128K+ cont
 pi-mgrep/
 ├── .pi/
 │   └── extensions/
-│       └── mgrep.ts        ← the extension (349 lines)
+│       └── mgrep.ts        ← the extension (340+ lines)
 ├── package.json
 ├── README.md
 └── README_CN.md
@@ -141,7 +131,7 @@ pi-mgrep/
 
 - [mgrep](https://github.com/mixedbread-ai/mgrep) — Semantic grep CLI
 - [Pi Extensions](https://pi.dev/docs/latest/extensions) — Official docs
-- [Mixedbread Platform](https://www.platform.mixedbread.com) — API key management
+- [Mixedbread Platform](https://www.platform.mixedbread.com) — API keys
 
 ## License
 
