@@ -1,10 +1,9 @@
 /**
  * pi-mgrep — Unified Search Extension for Pi Coding Agent
  *
- * One dependency: mgrep CLI (npm i -g @mixedbread/mgrep)
- * Three tools, zero-config.
+ * Zero dependencies, zero config. Auto-installs ripgrep + mgrep if missing.
  *
- *   search       → mgrep local (exact patterns + semantic NL queries)
+ *   search       → ripgrep (code) / mgrep (NL) — dual routing, both auto-installed
  *   web_search   → mgrep web → DuckDuckGo fallback
  *   web_fetch    → fetch URL, strip HTML, return plain text
  *
@@ -18,19 +17,60 @@ import { Type } from "typebox";
 import { execFile, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
+import { platform } from "node:os";
 
 const execFileAsync = promisify(execFile);
 
-// ── Auto-install mgrep ──────────────────────────────────
+// ── Auto-install binaries ───────────────────────────────
 
+let RG_BIN: string | null = null;
 let MGREP_BIN: string | null = null;
-let installPromise: Promise<string | null> | null = null;
+let rgPromise: Promise<string | null> | null = null;
+let mgrepPromise: Promise<string | null> | null = null;
+
+function resolveRg(): Promise<string | null> {
+	if (RG_BIN) return Promise.resolve(RG_BIN);
+	if (rgPromise) return rgPromise;
+
+	rgPromise = (async () => {
+		// 1. Try PATH
+		try {
+			const p = execSync("which rg 2>/dev/null", { encoding: "utf-8", timeout: 3000 }).trim();
+			if (p) { RG_BIN = p; return p; }
+		} catch {}
+
+		// 2. Try known locations
+		for (const d of ["/opt/homebrew/bin/rg", "/usr/local/bin/rg", "/usr/bin/rg",
+			process.env.HOME + "/.cargo/bin/rg", process.env.HOME + "/.local/bin/rg"]) {
+			if (existsSync(d)) { RG_BIN = d; return d; }
+		}
+
+		// 3. Auto-install via system package manager
+		const os = platform();
+		try {
+			if (os === "darwin") {
+				execSync("brew install ripgrep 2>/dev/null", { stdio: "pipe", timeout: 120000 });
+			} else if (os === "linux") {
+				// Try apt first, then dnf
+				try { execSync("which apt-get 2>/dev/null", { stdio: "pipe", timeout: 3000 }); } catch { try { execSync("which dnf 2>/dev/null", { stdio: "pipe", timeout: 3000 }); } catch {} }
+			}
+			const p = execSync("which rg 2>/dev/null", { encoding: "utf-8", timeout: 3000 }).trim();
+			if (p) { RG_BIN = p; return p; }
+		} catch (e: any) {
+			console.error("[pi-mgrep] ripgrep auto-install failed. Exact symbol search will use mgrep instead.");
+		}
+
+		return null;
+	})();
+
+	return rgPromise;
+}
 
 function resolveMgrep(): Promise<string | null> {
 	if (MGREP_BIN) return Promise.resolve(MGREP_BIN);
-	if (installPromise) return installPromise;
+	if (mgrepPromise) return mgrepPromise;
 
-	installPromise = (async () => {
+	mgrepPromise = (async () => {
 		// 1. Try PATH
 		try {
 			const p = execSync("which mgrep 2>/dev/null", { encoding: "utf-8", timeout: 3000 }).trim();
@@ -40,18 +80,17 @@ function resolveMgrep(): Promise<string | null> {
 		// 2. Try known locations
 		for (const d of [process.env.HOME + "/.nvm/versions/node/*/bin/mgrep", "/opt/homebrew/bin/mgrep", "/usr/local/bin/mgrep"]) {
 			try {
-				const globbed = execSync(`ls ${d} 2>/dev/null`, { encoding: "utf-8", timeout: 3000 }).trim().split("\n")[0];
-				if (globbed && existsSync(globbed)) { MGREP_BIN = globbed; return globbed; }
+				const g = execSync(`ls ${d} 2>/dev/null`, { encoding: "utf-8", timeout: 3000 }).trim().split("\n")[0];
+				if (g && existsSync(g)) { MGREP_BIN = g; return g; }
 			} catch {}
 		}
 
-		// 3. Auto-install globally
+		// 3. Auto-install via npm
 		try {
 			execSync("npm install -g @mixedbread/mgrep", { stdio: "pipe", timeout: 60000 });
 			const p = execSync("which mgrep 2>/dev/null", { encoding: "utf-8", timeout: 3000 }).trim();
 			if (p) { MGREP_BIN = p; return p; }
 		} catch (e: any) {
-			// npm may need sudo on some systems — inform, don't crash
 			if (e.stderr?.includes("EACCES") || e.stderr?.includes("permission denied")) {
 				console.error("[pi-mgrep] Auto-install failed (permission). Run: npm install -g @mixedbread/mgrep");
 			} else {
@@ -62,7 +101,7 @@ function resolveMgrep(): Promise<string | null> {
 		return null;
 	})();
 
-	return installPromise;
+	return mgrepPromise;
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -77,6 +116,16 @@ function run(cmd: string, args: string[], timeout = 15000): Promise<string> {
 	return execFileAsync(cmd, args, { timeout, maxBuffer: 1024 * 1024 })
 		.then(({ stdout }) => stdout)
 		.catch((err) => `Error: ${err.message}`);
+}
+
+/** Heuristic: code-like queries → ripgrep; natural language → mgrep */
+function looksLikeCode(q: string): boolean {
+	const hasSpace = q.includes(" ");
+	if (hasSpace) {
+		return /[{}()\[\]=<>:;%@#]/.test(q);
+	}
+	return /[A-Z][a-z]+[A-Z]|_\w{2,}|\w+\.\w{2,}|\/\w+|[{}()\[\]=<>:;${}%@#]/.test(q)
+		|| (q.length <= 20);
 }
 
 function isMgrepError(raw: string): boolean {
@@ -144,44 +193,61 @@ export default function searchExtension(pi: ExtensionAPI) {
 
 	ensureEmptyDir();
 
-	// ── Tool 1: search (local — mgrep handles everything) ──
+	// ── Tool 1: search (dual-engine: ripgrep code, mgrep NL) ──
 	pi.registerTool({
 		name: "search",
 		label: "Search",
 		description:
-			"Search local files using mgrep semantic search. " +
-			"Handles both exact patterns (variable names, symbols) and natural language questions. " +
-			"Set answer=true for an AI-generated summary. " +
-			"Defaults to current working directory. Use web_search for internet searches.",
+			"Search local files. Auto-selects engine: ripgrep for exact patterns/code/symbols " +
+			"(fast, offline), mgrep for natural language questions (semantic, with optional answer). " +
+			"Both engines auto-install if missing. Use web_search for internet searches.",
 		promptSnippet: "Search local codebase for files, patterns, or concepts",
 		promptGuidelines: [
-			"Use 'search' for local file content. Use 'web_search' for internet information.",
-			"Works for exact symbols AND natural language queries.",
-			"Set answer=true to get a concise AI summary instead of raw snippets.",
+			"Use 'search' for local file content. Use 'web_search' for internet.",
+			"Exact symbols/code → auto-picks ripgrep (instant).",
+			"Natural language → auto-picks mgrep (semantic).",
 		],
 		parameters: Type.Object({
-			query: Type.String({ description: "Search query: symbol, pattern, or natural language question" }),
-			path: Type.Optional(Type.String({ description: "Directory to search (default: current working directory)" })),
+			query: Type.String({ description: "Search query: pattern, symbol, or natural language question" }),
+			path: Type.Optional(Type.String({ description: "Directory to search (default: cwd)" })),
 			answer: Type.Optional(Type.Boolean({
-				description: "Generate an AI answer summary (default false)",
+				description: "Generate an AI answer summary (mgrep only, default false)",
 			})),
 		}),
 		async execute(_id, params) {
-			const mgrep = await resolveMgrep();
 			const path = params.path || process.cwd();
-			const args = ["search", "-s", "-c", "-m", "5", params.query, path];
-			if (params.answer) args.push("-a");
+			const useRg = looksLikeCode(params.query);
 
-			if (!mgrep) {
-				return { content: [{ type: "text", text: "mgrep not installed. Run: npm install -g @mixedbread/mgrep" }], details: { status: "missing-mgrep" } };
+			if (useRg) {
+				const rg = await resolveRg();
+				if (rg) {
+					const raw = await run(rg, [
+						"--max-count", "20", "--max-filesize", "1M",
+						"--no-heading", "--line-number", "--color", "never",
+						params.query, path,
+					], 10000);
+					return {
+						content: [{ type: "text", text: trunc(raw || `No results in ${path}.`) }],
+						details: { query: params.query, engine: "ripgrep", path },
+					};
+				}
+				// ripgrep not available → fall through to mgrep
 			}
 
+			// mgrep path (either NL query, or rg not available)
+			const mgrep = await resolveMgrep();
+			if (!mgrep) {
+				return { content: [{ type: "text", text: "No search engine available. Install mgrep: npm install -g @mixedbread/mgrep" }] };
+			}
+
+			const args = ["search", "-s", "-c", "-m", "5", params.query, path];
+			if (params.answer) args.push("-a");
 			let raw = await run(mgrep, args, 30000);
 			if (!raw.trim()) raw = `No results found in ${path}.`;
 
 			return {
 				content: [{ type: "text", text: trunc(raw) }],
-				details: { query: params.query, path },
+				details: { query: params.query, engine: useRg ? "mgrep(rg-missing)" : "mgrep", path },
 			};
 		},
 	});
@@ -208,14 +274,13 @@ export default function searchExtension(pi: ExtensionAPI) {
 			})),
 		}),
 		async execute(_id, params) {
-			const mgrep = await resolveMgrep();
 			const n = params.count ?? 3;
 			const args = ["search", "-w", "-c", "-m", String(n * 3), params.query, "/tmp/mgrep-empty"];
 			if (params.answer) args.push("-a");
 
+			const mgrep = await resolveMgrep();
 			if (mgrep) {
 				const raw = await run(mgrep, args, 30000);
-
 				if (!isMgrepError(raw) && raw.trim()) {
 					if (params.answer) {
 						return { content: [{ type: "text", text: trunc(raw) }], details: { query: params.query, engine: "mgrep-web-answer" } };
@@ -224,7 +289,6 @@ export default function searchExtension(pi: ExtensionAPI) {
 				}
 			}
 
-			// Fallback: DuckDuckGo
 			const fallbackResult = await ddgFallback(params.query, n);
 			return {
 				content: [{ type: "text", text: fallbackResult }],
@@ -293,6 +357,17 @@ export default function searchExtension(pi: ExtensionAPI) {
 				query = trimmed;
 				path = process.cwd();
 			}
+
+			const useRg = looksLikeCode(query);
+			if (useRg) {
+				const rg = await resolveRg();
+				if (rg) {
+					const raw = await run(rg, ["--max-count", "10", "--no-heading", "--line-number", "--color", "never", query, path], 10000);
+					ctx.ui.notify(trunc(raw, 3000), "info");
+					return;
+				}
+			}
+
 			const mgrep = await resolveMgrep();
 			if (!mgrep) { ctx.ui.notify("mgrep not installed. Run: npm install -g @mixedbread/mgrep", "warning"); return; }
 			const raw = await run(mgrep, ["search", "-s", "-c", "-a", "-m", "3", query, path], 30000);
