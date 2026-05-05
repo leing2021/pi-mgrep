@@ -1,8 +1,16 @@
 {
   "name": "pi-mgrep",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Unified search extension for Pi coding agent — ripgrep + mgrep + DuckDuckGo fallback",
-  "keywords": ["pi", "pi-extension", "search", "mgrep", "ripgrep", "web-search", "duckduckgo"],
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "search",
+    "mgrep",
+    "ripgrep",
+    "web-search",
+    "duckduckgo"
+  ],
   "author": "Jason Le",
   "license": "MIT",
   "repository": {
@@ -10,6 +18,8 @@
     "url": "https://github.com/leing2021/pi-mgrep"
   },
   "pi": {
-    "extensions": [".pi/extensions/mgrep.ts"]
+    "extensions": [
+      ".pi/extensions/mgrep.ts"
+    ]
   }
 }
