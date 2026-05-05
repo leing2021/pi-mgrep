@@ -93,8 +93,33 @@ web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
 
 - **Pi Coding Agent** ≥ 0.73.0
 - **mgrep CLI** (`npm install -g @mixedbread/mgrep`)
-- **mgrep login** or `MXBAI_API_KEY` env var (recommended for CI/CD)
-- **ripgrep** (optional — local sematic search auto-upgrades to mgrep if unavailable)
+- **ripgrep** (optional — local semantic search auto-upgrades to mgrep if unavailable)
+
+## Authentication
+
+mgrep requires authentication to Mixedbread's API. Two options:
+
+### Option A: Device login (7-day expiry)
+
+```bash
+mgrep login
+# opens browser → authorize → token saved to ~/.mgrep/token.json
+# must re-login every 7 days
+```
+
+### Option B: API key (recommended, permanent)
+
+1. Go to [Mixedbread Platform](https://www.platform.mixedbread.com)
+2. Sign up / Sign in
+3. Create an API key from the dashboard
+4. Export it in your shell profile:
+
+```bash
+# ~/.zshrc (or ~/.bashrc)
+export MXBAI_API_KEY="mxb_your_key_here"
+```
+
+API key takes priority over device login and never expires. Ideal for CI/CD and daily use.
 
 ## Tokens
 

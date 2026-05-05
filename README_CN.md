@@ -93,8 +93,33 @@ web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
 
 - **Pi Coding Agent** ≥ 0.73.0
 - **mgrep CLI** (`npm install -g @mixedbread/mgrep`)
-- **mgrep login** 或 `MXBAI_API_KEY` 环境变量（CI/CD 推荐用 API key，永久有效）
-- **ripgrep**（可选 — 本地语义搜索在无 ripgrep 时自动升级为 mgrep 全语义模式）
+- **ripgrep**（可选 — 无 ripgrep 时本地语义搜索自动升级为 mgrep 全语义模式）
+
+## 认证配置
+
+mgrep 需要认证才能调用 Mixedbread 的 API，有两种方式：
+
+### 方式 A: 设备登录（7 天过期）
+
+```bash
+mgrep login
+# 打开浏览器 → 授权 → token 保存到 ~/.mgrep/token.json
+# 每 7 天需要重新登录
+```
+
+### 方式 B: API Key（推荐，永久有效）
+
+1. 打开 [Mixedbread Platform](https://www.platform.mixedbread.com)
+2. 注册 / 登录
+3. 在控制台创建 API Key
+4. 在 shell 配置文件中导出：
+
+```bash
+# ~/.zshrc（或 ~/.bashrc）
+export MXBAI_API_KEY="mxb_your_key_here"
+```
+
+API Key 优先级高于设备登录且永不过期，适合 CI/CD 和日常使用。
 
 ## Token 开销
 
