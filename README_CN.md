@@ -144,7 +144,20 @@ export MXBAI_API_KEY="mxb_your_key_here"
 
 ## 测评报告
 
-15 项全通过，详见 [docs/test-report.md](docs/test-report.md)。
+| 类别 | 场景 | 引擎 | 耗时 |
+|---|---|---|---|
+| 本地 | 代码符号 `registerTool` | ripgrep | 0.007s |
+| 本地 | 自然语言 `web search fallback logic` | mgrep | 12.9s |
+| 本地 | 中文 `错误处理策略` | mgrep | 4.5s |
+| 本地 | 自然语言 + AI 摘要 | mgrep | 13.7s |
+| 网页 | 默认 `count: 5` | mgrep | 5.1s |
+| 网页 | `answer: true` + 9 条引用 | mgrep | 9.9s |
+| 网页 | `count: 3` / `count: 7` 截断 | filterWeb | — |
+| 抓取 | HTML 抓取 + 剥离 | Node.js | <1s |
+| 降级 | DuckDuckGo 回退 | DDG | 1.3s |
+| 边界 | 6000 字符截断 | — | — |
+
+**15 项全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
 
 ## License
 

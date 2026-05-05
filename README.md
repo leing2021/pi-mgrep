@@ -148,7 +148,20 @@ export MXBAI_API_KEY="mxb_your_key_here"
 
 ## Test Report
 
-All 15 scenarios passed. See [docs/test-report.md](docs/test-report.md) for details.
+| Category | Scenario | Engine | Time |
+|---|---|---|---|
+| Code symbol `registerTool` | Local | ripgrep | 0.007s |
+| NL `web search fallback logic` | Local | mgrep | 12.9s |
+| Chinese NL `错误处理策略` | Local | mgrep | 4.5s |
+| NL + answer summary | Local | mgrep | 13.7s |
+| Default `count: 5` | Web | mgrep | 5.1s |
+| `answer: true` + 9 citations | Web | mgrep | 9.9s |
+| `count: 3` / `count: 7` truncation | Web | filterWeb | — |
+| HTML fetch & strip | Fetch | Node.js | <1s |
+| DuckDuckGo fallback | Degrade | DDG | 1.3s |
+| 6000-char truncation | Edge | — | — |
+
+**15/15 passed.** Full details: [docs/test-report.md](docs/test-report.md).
 
 ## License
 
