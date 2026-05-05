@@ -44,7 +44,10 @@ mgrep web with automatic DuckDuckGo fallback.
 
 ```typescript
 web_search({ query: "React 19 new features" })
-// → 3 ranked URLs
+// → 5 ranked URLs
+
+web_search({ query: "React 19 new features", count: 10 })
+// → 10 ranked URLs (max customizable)
 
 web_search({ query: "React 19 new features", answer: true })
 // → AI-generated answer with citations
@@ -58,6 +61,28 @@ Fetch URL, strip HTML, return plain text.
 web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
 // → Clean text, max 6000 chars
 ```
+
+## Customizing Results Count
+
+Default is **5** results per search.
+
+### Per-query (via prompt)
+
+Ask the Agent in natural language — no code changes needed:
+
+> *"Search the web for React 19 new features, return 10 results"*  
+> *"请搜索 React 19 新特性，返回 10 条结果"*
+
+The Agent will automatically pass `count: 10` to `web_search`. Works in English and Chinese.
+
+### Change the default permanently
+
+Ask the Agent directly:
+
+> *"请将 web_search 的默认返回数量从 5 改为 10"*  
+> *"Change the default result count of web_search from 5 to 10"*
+
+The Agent will edit `.pi/extensions/mgrep.ts` for you — change both occurrences of the number, then restart pi.
 
 ## Interactive Commands
 
@@ -120,6 +145,10 @@ export MXBAI_API_KEY="mxb_your_key_here"
 - **Auto-install** — both engines install via system package managers
 - **Graceful degradation** — rg missing → mgrep for all. mgrep missing → DDG for web
 - **Output limits** — 6000 char cap on every tool
+
+## Test Report
+
+All 15 scenarios passed. See [docs/test-report.md](docs/test-report.md) for details.
 
 ## License
 

@@ -44,7 +44,10 @@ mgrep web + DuckDuckGo 自动回退。
 
 ```typescript
 web_search({ query: "React 19 新特性" })
-// → 3 个带评分的 URL
+// → 5 个带评分的 URL
+
+web_search({ query: "React 19 新特性", count: 10 })
+// → 10 个带评分的 URL（可自定义上限）
 
 web_search({ query: "React 19 新特性", answer: true })
 // → AI 生成的带引用答案
@@ -56,6 +59,28 @@ web_search({ query: "React 19 新特性", answer: true })
 web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
 // → 纯文本，最大 6000 字符
 ```
+
+## 自定义返回数量
+
+默认返回 **5** 条结果。
+
+### 单次查询（通过提示词）
+
+用自然语言告诉 Agent，无需改代码：
+
+> *"搜索 React 19 新特性，返回 10 条结果"*  
+> *"Search the web for React 19 new features, return 10 results"*
+
+Agent 会自动传递 `count: 10` 给 `web_search`。中英文提示词均支持。
+
+### 永久修改默认值
+
+直接告诉 Agent：
+
+> *"请将 web_search 的默认返回数量从 5 改为 10"*  
+> *"Change the default result count of web_search from 5 to 10"*
+
+Agent 会帮你编辑 `.pi/extensions/mgrep.ts`，改完两处数字后重启 pi 即可。
 
 ## 交互命令
 
@@ -116,6 +141,10 @@ export MXBAI_API_KEY="mxb_your_key_here"
 - **自动安装** — 两个引擎均通过系统包管理器自动安装
 - **优雅降级** — rg 缺失 → mgrep 接管。mgrep 缺失 → DDG 接管网页搜索
 - **输出精控** — 所有工具 6000 字符硬上限
+
+## 测评报告
+
+15 项全通过，详见 [docs/test-report.md](docs/test-report.md)。
 
 ## License
 
