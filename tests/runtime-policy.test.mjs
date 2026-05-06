@@ -1,12 +1,12 @@
 /**
  * U4: RED — Runtime tests for env allowlist + auto-install policy
  *
- * Tests import getMinimalEnv, getAutoInstallPolicy, runCommand from src/security.mjs.
+ * Tests import getMinimalEnv, getAutoInstallPolicy, runCommand from src/security.ts.
  * These verify runtime policy behavior, not just static patterns.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { getMinimalEnv, getAutoInstallPolicy, runCommand } from "../src/security.mjs";
+import { getMinimalEnv, getAutoInstallPolicy, runCommand } from "../src/security.ts";
 
 // ── 4.1–4.3: getMinimalEnv ────────────────────────────────
 

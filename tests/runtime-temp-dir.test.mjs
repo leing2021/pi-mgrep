@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
 	getProjectScopedTempDir,
 	ensureProjectScopedEmptyDir,
-} from "../src/security.mjs";
+} from "../src/security.ts";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 

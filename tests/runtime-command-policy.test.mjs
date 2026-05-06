@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import {
 	getCommandPolicy,
 	runPolicyCommand,
-} from "../src/security.mjs";
+} from "../src/security.ts";
 
 // ── Command policy structure ──────────────────────────────
 

@@ -131,7 +131,7 @@ export function addSourceToPack(pack, source) {
  * Fetches up to maxSources, clips each to budget, records failures.
  */
 export async function collectEvidence(urls, options = {}) {
-	const { safeFetchText } = await import("./security.mjs");
+	const { safeFetchText } = await import("./security.ts");
 	const pack = buildEvidencePack(options);
 	const fetchResults = [];
 

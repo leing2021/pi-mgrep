@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import {
 	getPathPolicy,
 	validateSearchPath,
-} from "../src/security.mjs";
+} from "../src/security.ts";
 import { resolve, join } from "node:path";
 
 // ── Path policy structure ─────────────────────────────────

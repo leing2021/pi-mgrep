@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const EXT = readFileSync("extensions/pi-search.ts", "utf-8");
-const SEC = readFileSync("src/security.mjs", "utf-8");
+const SEC = readFileSync("src/security.ts", "utf-8");
 const COMBINED = EXT + "\n" + SEC;
 
 describe("token-output: web_fetch mode parameter", () => {

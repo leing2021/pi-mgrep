@@ -10,7 +10,7 @@
  *
  * Commands: /search, /web, /fetch
  *
- * Runtime/security helpers imported from src/security.mjs
+ * Runtime/security helpers imported from src/security.ts
  *
  * https://github.com/leing2021/pi-search
  */
@@ -28,14 +28,14 @@ import {
 	validateSearchPath,
 	ensureProjectScopedEmptyDir,
 	getProjectScopedTempDir,
-} from "../src/security.mjs";
+} from "../src/security.ts";
 import {
 	getLlmConfig,
 	getResearchSearchStatus,
 	buildEvidencePack,
 	collectEvidence,
 	verifyResearchClaim,
-} from "../src/research.mjs";
+} from "../src/research.ts";
 
 // ── Helpers ──────────────────────────────────────────────
 

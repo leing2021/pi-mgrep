@@ -18,7 +18,7 @@ import {
 	getResearchSearchStatus,
 	addSourceToPack,
 	collectEvidence,
-} from "../src/research.mjs";
+} from "../src/research.ts";
 import { readFileSync } from "node:fs";
 
 const EXT = readFileSync("extensions/pi-search.ts", "utf-8");

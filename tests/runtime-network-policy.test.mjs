@@ -10,7 +10,7 @@ import {
 	getNetworkPolicy,
 	validateUrl,
 	safeFetchText,
-} from "../src/security.mjs";
+} from "../src/security.ts";
 import { createMockServer } from "./helpers/mock-server.mjs";
 
 // ── Network policy structure ──────────────────────────────

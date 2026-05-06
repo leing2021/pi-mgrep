@@ -1,13 +1,13 @@
 /**
  * U2: RED — Runtime tests for safeFetchText (SSRF + fetch safety)
  *
- * These tests import safeFetchText directly from src/security.mjs.
+ * These tests import safeFetchText directly from src/security.ts.
  * They use local mock HTTP servers and _dnsLookup test seam.
  * All should FAIL until U3 makes them pass.
  */
 import { describe, test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { safeFetchText, validateUrl } from "../src/security.mjs";
+import { safeFetchText, validateUrl } from "../src/security.ts";
 import { createMockServer } from "./helpers/mock-server.mjs";
 
 // Fake DNS that returns a public IP (test seam for happy-path tests)
