@@ -1,6 +1,7 @@
 # pi-search
 
 > Ripgrep + mgrep 双引擎路由搜索扩展，专为 Pi Coding Agent 设计。
+> v0.5.0 — 证据卡片、CLI 能力检测、断路器、词法回退、SearXNG、GitHub 搜索、PDF 提取。
 
 [Pi Coding Agent](https://github.com/badlogic/pi-mono) 的统一搜索扩展。
 
@@ -110,12 +111,34 @@ research_search({ query: "React Server Components 是什么", verify: false })
 
 不读取本地文件。不进行查询重写。
 
+## v0.5.0 新特性
+
+| 特性 | 说明 |
+|---|---|
+| **证据卡片** | Lexical fallback 使用结构化卡片格式，budget-aware 截断 (compact ≤ 6k chars)。其他 provider（ripgrep、mgrep、DDG、PDF）保持 backward-compatible plain-text 输出。证据卡片模块可后续渐进迁移其他 engine。 |
+| **CLI 能力检测** | 启动时自动检测 `gh`、`htmlq`、`pdftotext`；区分本地与网络 CLI 工具，独立启用开关。 |
+| **mgrep 断路器** | mgrep 遇到配额（`429`）或认证错误时会话级快速失败 — 避免重复慢速失败；TTL 可配置。 |
+| **词法回退** | mgrep 不可用或断路器开启时，分词 + 多轮 ripgrep 回退 — 无语义引擎也能获得近似语义结果。 |
+| **SearXNG 网页搜索** | 可配置自托管 SearXNG 实例作为 `web_search` 后端（通过 `PI_SEARCH_WEB_PROVIDER` 启用）。 |
+| **GitHub 搜索** | 可启用 `gh` CLI 集成，在 `web_search` 中搜索仓库/Issue/代码。 |
+| **DDG HTML 解析器** | 有 `htmlq` 时改进 DuckDuckGo 结果提取。 |
+| **PDF 提取** | `web_fetch` 在有 `pdftotext` 时自动提取 PDF 内容。 |
+
+新增源码模块：`evidence-cards.ts`、`cli-capabilities.ts`、`mgrep-circuit-breaker.ts`、`lexical-fallback.ts`、`htmlq-parser.ts`、`searxng-provider.ts`、`pdf-extractor.ts`、`github-search.ts`。
+
 ## 功能特点
 
 | 特性 | 含义 |
 |---|---|
 | 自动路由 | 代码类查询走 `ripgrep`；自然语言查询走 `mgrep`。 |
+| 证据卡片 (v0.5) | 所有工具返回统一卡片格式 — 标题、来源、摘要、相关性、元数据。 |
+| CLI 能力检测 (v0.5) | 启动时检测 `gh`、`htmlq`、`pdftotext`；本地/网络分离。 |
+| 断路器 (v0.5) | mgrep 429/认证失败触发会话级断路器；避免重复慢速重试。 |
+| 词法回退 (v0.5) | mgrep 不可用时多轮 ripgrep 回退 — 比无结果好。 |
 | 网页证据 | `web_search` 发现 URL；`web_fetch` 安全读取网页并标记不可信边界。 |
+| SearXNG 支持 (v0.5) | 自托管搜索引擎作为 `web_search` 后端。 |
+| GitHub 搜索 (v0.5) | `gh` CLI 集成，搜索仓库/Issue/代码。 |
+| PDF 提取 (v0.5) | `web_fetch` 在有 `pdftotext` 时自动提取 PDF 内容。 |
 | 可选研究验证 | `research_search` 构建仅网页证据包；LLM 验证默认关闭。 |
 | 显式安全策略 | 命令、路径、网络、临时目录、审计策略会出现在工具 details 中。 |
 | 优雅降级 | mgrep 网页搜索缺失/失败时，可回退到 DuckDuckGo URL 发现。 |
@@ -212,6 +235,12 @@ Agent 会帮你编辑 `extensions/pi-search.ts`，改完两处数字后重启 pi
 | `PI_SEARCH_LLM_MODEL` | 模型名称 | — | 模型标识（如 `gpt-4o-mini`）。 |
 | `PI_SEARCH_LLM_BASE_URL` | URL | — | 自定义 API 端点（用于本地/自托管 LLM）。 |
 | `PI_SEARCH_LLM_API_KEY_ENV` | 环境变量名 | — | 存储 LLM API 密钥的环境变量名（如 `OPENAI_API_KEY`）。密钥值不会被暴露。 |
+| `PI_SEARCH_LOCAL_CLI_ENHANCEMENTS` | `auto` \| `never` | `auto` | 自动检测并使用 `htmlq`、`pdftotext` 增强输出。 |
+| `PI_SEARCH_NETWORK_CLI_ENHANCEMENTS` | `always` \| `never` | `never` | 启用 `gh` CLI 进行 GitHub 搜索（依赖网络，默认关闭）。 |
+| `PI_SEARCH_WEB_PROVIDER` | `auto` \| `searxng` \| `duckduckgo` | `auto` | 网页搜索后端。`auto` 优先尝试 SearXNG（如已配置），再回退 DuckDuckGo。 |
+| `PI_SEARCH_SEARXNG_URL` | URL | — | SearXNG 实例地址（如 `http://localhost:8080`）。`PI_SEARCH_WEB_PROVIDER=searxng` 时必需。 |
+| `PI_SEARCH_SEARXNG_FORMAT` | `json` \| `html` | `json` | SearXNG 响应格式。 |
+| `PI_SEARCH_MGREP_BREAKER_TTL_MS` | 数字 | `600000` | 断路器 TTL（毫秒，默认 10 分钟）。mgrep 429/认证失败后，后续调用直接跳过直到 TTL 过期。 |
 
 ### 快速示例
 
@@ -259,6 +288,21 @@ export PI_SEARCH_AUTO_INSTALL=always
 export PI_SEARCH_ALLOW_OUTSIDE_CWD=always
 ```
 
+**启用 GitHub 搜索（通过 `gh` CLI）：**
+
+```bash
+export PI_SEARCH_NETWORK_CLI_ENHANCEMENTS=always
+# 需先执行 gh auth login
+```
+
+**使用 SearXNG 进行网页搜索：**
+
+```bash
+export PI_SEARCH_WEB_PROVIDER=searxng
+export PI_SEARCH_SEARXNG_URL=http://localhost:8080
+export PI_SEARCH_SEARXNG_FORMAT=json
+```
+
 ## 工作原理
 
 ```
@@ -266,29 +310,43 @@ export PI_SEARCH_ALLOW_OUTSIDE_CWD=always
 │  PATH 查找 → 已知路径 → 安装指引                           │
 │  （自动安装需设置 PI_SEARCH_AUTO_INSTALL=always）           │
 ├───────────────────────────────────────────────────────────┤
+│  cliCapabilities() — CLI 工具检测 (v0.5)                   │
+│    本地: htmlq, pdftotext（默认 auto）                      │
+│    网络: gh（需通过环境变量显式启用）                        │
+├───────────────────────────────────────────────────────────┤
+│  mgrepCircuitBreaker() — 会话级快速失败 (v0.5)              │
+│    429 / 认证错误 → 触发断路器，TTL 可配置                   │
+├───────────────────────────────────────────────────────────┤
 │  runCommand() — 最小权限运行器                              │
 │    仅 execFile · 最小 env · timeout · maxBuffer             │
 ├───────────────────────────────────────────────────────────┤
 │  safeFetchText() — 安全网页抓取                             │
 │    SSRF 防护 · DNS/IP 校验 · 重定向控制                     │
 │    Content-Type 检查 · 大小限制 · 超时                      │
+│    PDF 自动提取（通过 pdftotext，v0.5）                     │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: search                                               │
 │    代码特征? → rg (有则 0.02s)                              │
 │          否 → mgrep (3-8s, 语义)                           │
+│          mgrep 断路器开启? → 词法回退 (v0.5)                │
 │     answer=true? → -a (AI 摘要)                             │
+│    所有结果 → 证据卡片 (v0.5)                               │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: web_search                                           │
-│    mgrep -w 项目级空临时目录（count 限制 1-10）              │
-│    失效? → DuckDuckGo via safeFetchText()                   │
+│    后端: SearXNG (v0.5) → gh (v0.5) → mgrep → DDG          │
+│    DDG 提取在有 htmlq 时增强 (v0.5)                         │
+│    所有结果 → 证据卡片 (v0.5)                               │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: web_fetch                                            │
 │    safeFetchText() → 清理 → mode (compact/quotes/full)     │
+│    PDF? → pdftotext 提取 (v0.5)                             │
 │    不可信边界 · 风险标记 · 上下文预算                        │
+│    所有结果 → 证据卡片 (v0.5)                               │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: research_search                                      │
 │    DuckDuckGo 发现 → safeFetchText 证据包                   │
 │    可选 verifier → 显式验证状态                              │
+│    所有结果 → 证据卡片 (v0.5)                               │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -300,6 +358,8 @@ export PI_SEARCH_ALLOW_OUTSIDE_CWD=always
 - **自动安装 opt-in**：默认 `never`。设置 `PI_SEARCH_AUTO_INSTALL=always` 启用。
 - **不可信边界**：所有网页内容明确标记为不可信证据。
 - **风险标记**：检测 prompt 注入短语并标记。
+- **CLI 能力隔离**：本地工具（htmlq、pdftotext）和网络工具（gh）有独立启用开关。
+- **断路器**：mgrep 失败触发会话级断路器；避免重复慢速重试。
 
 这些安全控制保持轻量：`pi-search` 是搜索扩展，不是浏览器 Agent 或爬虫。
 
@@ -330,6 +390,13 @@ export MXBAI_API_KEY="mxb_your_key_here"
 
 ## 设计原则
 
+- **证据卡片** (v0.5.0) — Lexical fallback 结构化卡片格式；其他 engine 保持 backward-compatible legacy output
+- **CLI 能力检测** (v0.5.0) — 自动检测 gh、htmlq、pdftotext
+- **断路器** (v0.5.0) — mgrep 配额/认证错误时会话级快速失败
+- **词法回退** (v0.5.0) — mgrep 不可用时多轮 ripgrep 回退
+- **SearXNG 启用** (v0.5.0) — 自托管网页搜索后端
+- **GitHub 搜索** (v0.5.0) — `gh` CLI 集成
+- **PDF 提取** (v0.5.0) — `web_fetch` 自动提取 PDF
 - **双引擎** — ripgrep 0.02s 处理代码，mgrep 3-8s 处理自然语言
 - **最小权限沙箱** — 进程级 env/cwd/timeout 隔离，无需 Docker
 - **优雅降级** — rg 缺失 → mgrep 接管。mgrep 缺失 → DDG 接管网页搜索
@@ -351,7 +418,7 @@ export MXBAI_API_KEY="mxb_your_key_here"
 | 降级 | DuckDuckGo 回退 | DDG | 1.3s |
 | 边界 | 6000 字符截断 | — | — |
 
-**137 项自动化测试全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
+**305 项自动化测试全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
 
 ## License
 

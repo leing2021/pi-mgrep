@@ -36,6 +36,15 @@ import {
 	collectEvidence,
 	verifyResearchClaim,
 } from "../src/research.ts";
+import { isMgrepAvailable, recordMgrepFailure, getMgrepFailureReason } from "../src/mgrep-circuit-breaker.ts";
+import { tokenizeQuery, buildRgArgs, rankResults } from "../src/lexical-fallback.ts";
+import { isToolEnabled } from "../src/cli-capabilities.ts";
+import { parseDDGResultsHtml } from "../src/htmlq-parser.ts";
+import { resolveWebProvider, isSearXNGConfigured, buildSearXNGSearchUrl, parseSearXNGResponse } from "../src/searxng-provider.ts";
+import { isPdfUrl, isPdfContentType, formatPdfResults, parsePdfOutput, buildPdftotextArgs } from "../src/pdf-extractor.ts";
+import { isGitHubQuery, buildGhSearchArgs, parseGhSearchOutput, formatGitHubResults, GITHUB_SEARCH_MAX_CHARS } from "../src/github-search.ts";
+import { buildEvidenceCards, buildDetails } from "../src/evidence-cards.ts";
+
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -103,6 +112,16 @@ async function ddgFallback(query: string, n: number): Promise<string> {
 			return "All search engines unavailable. Check network connection.";
 		}
 
+		// v0.5: Try improved parser first
+		const parsedResults = parseDDGResultsHtml(raw);
+		if (parsedResults.length > 0) {
+			const formatted = parsedResults.slice(0, n).map((r, i) =>
+				`${i + 1}. ${r.title}\n  ${r.url}\n  ${r.snippet.slice(0, 150)}`
+			).join("\n\n");
+			return `[DuckDuckGo fallback]\n${formatted}`;
+		}
+
+		// Legacy regex fallback
 		const results: string[] = [];
 		const titleRe = /class="result__a"[^>]*>(.*?)<\/a>/g;
 		const snippetRe = /class="result__snippet"[^>]*>(.*?)<\/[at]/g;
@@ -201,30 +220,83 @@ export default function searchExtension(pi: ExtensionAPI) {
 				}
 			}
 
-			const mgrep = await resolveMgrep();
-			if (!mgrep) {
-				return {
-					content: [{
-						type: "text",
-						text: "No search engine available.\n" +
-							"Install ripgrep: brew install ripgrep (macOS)\n" +
-							"Install mgrep: npm install -g @mixedbread/mgrep\n" +
-							"Or set PI_SEARCH_AUTO_INSTALL=always to auto-install.",
-					}],
-					details: { sandboxMode: "process-env-cwd-timeout", autoInstallAttempted: false },
-				};
+			// v0.5: Natural language search — mgrep (optional) → lexical fallback
+			const mgrepAvailable = isMgrepAvailable();
+			if (mgrepAvailable) {
+				const mgrep = await resolveMgrep();
+				if (mgrep) {
+					const args = ["search", "-s", "-c", "-m", "5", params.query, path];
+					if (params.answer) args.push("-a");
+					let raw = await run(mgrep, args, 30000);
+
+					// Check if mgrep returned an error
+					if (isMgrepError(raw) || !raw.trim()) {
+						recordMgrepFailure(raw || "empty response");
+						// Fall through to lexical fallback
+					} else {
+						return {
+							content: [{ type: "text", text: trunc(raw) }],
+							details: {
+								query: params.query,
+								engine: "mgrep",
+								path,
+								sandboxMode: "process-env-cwd-timeout",
+								autoInstallAttempted: false,
+							},
+						};
+					}
+				}
 			}
 
-			const args = ["search", "-s", "-c", "-m", "5", params.query, path];
-			if (params.answer) args.push("-a");
-			let raw = await run(mgrep, args, 30000);
-			if (!raw.trim()) raw = `No results found in ${path}.`;
+			// v0.5: Lexical fallback — tokenize + multi-pass ripgrep
+			const reason = !mgrepAvailable ? getMgrepFailureReason() : "mgrep unavailable";
+			const rg = await resolveRg();
+			if (rg) {
+				const tokens = tokenizeQuery(params.query);
+				if (tokens.length > 0) {
+					// Try multi-pass: phrase → AND → OR
+					for (const pass of ["phrase", "and", "or"] as const) {
+						const rgArgs = buildRgArgs(tokens, path, pass);
+						const raw = await run(rg, rgArgs, 10000);
+						if (raw && !raw.startsWith("Error:")) {
+							const ranked = rankResults(raw, tokens);
+							const cards = [{
+								source: path,
+								locator: `pass:${pass}`,
+								snippet: ranked,
+								engine: "ripgrep",
+							}];
+							return {
+								content: [{ type: "text", text: buildEvidenceCards(cards, buildDetails({
+									provider: "ripgrep",
+									fallbackUsed: true,
+									mode: "compact",
+								})) }],
+								details: {
+									query: params.query,
+									engine: "lexical-fallback",
+									provider: "ripgrep",
+									fallbackUsed: true,
+									reason,
+									path,
+									pass,
+									sandboxMode: "process-env-cwd-timeout",
+									autoInstallAttempted: false,
+								},
+							};
+						}
+					}
+				}
+			}
 
 			return {
-				content: [{ type: "text", text: trunc(raw) }],
+				content: [{ type: "text", text: `[Local lexical fallback — no results]\nSemantic search unavailable: ${reason}\nNo results found for "${params.query}" in ${path}.` }],
 				details: {
 					query: params.query,
-					engine: useRg ? "mgrep(rg-missing)" : "mgrep",
+					engine: "lexical-fallback",
+					provider: "none",
+					fallbackUsed: true,
+					reason,
 					path,
 					sandboxMode: "process-env-cwd-timeout",
 					autoInstallAttempted: false,
@@ -247,6 +319,7 @@ export default function searchExtension(pi: ExtensionAPI) {
 			"Use web_search for internet information, 'search' for local files.",
 			"answer=true returns a concise summary only when mgrep answer mode succeeds; fallback returns URL results.",
 			"After getting URLs, use web_fetch to read the best match in detail.",
+			"If mgrep is unavailable or failed, falls back to DuckDuckGo.",
 		],
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query in natural language" }),
@@ -254,51 +327,117 @@ export default function searchExtension(pi: ExtensionAPI) {
 			answer: Type.Optional(Type.Boolean({ description: "Return an AI-generated answer summary when available; fallback is URL-only (default false)" })),
 		}),
 		async execute(_id, params) {
+			// Provider chain: SearXNG → gh → mgrep → DDG. Fallback reason: mgrep unavailable or failed
 			const n = Math.min(10, Math.max(1, params.count ?? 5));
-			const args = ["search", "-w", "-c", "-m", String(n * 3), params.query, getProjectScopedTempDir()];
-			if (params.answer) args.push("-a");
 
-			const mgrep = await resolveMgrep();
-			if (mgrep) {
-				const raw = await run(mgrep, args, 30000);
-				if (!isMgrepError(raw) && raw.trim()) {
-					if (params.answer) {
+			// v0.5: Try SearXNG first if configured
+			if (resolveWebProvider() === "searxng" && isSearXNGConfigured()) {
+				try {
+					const searchUrl = buildSearXNGSearchUrl(params.query, { format: "json", count: n });
+					const result = await safeFetchText(searchUrl, {
+						maxChars: 50000,
+						mode: "full",
+						timeout: 12000,
+						allowHttp: true, // SearXNG may be local HTTP
+					});
+					const parsed = parseSearXNGResponse(result.text);
+					if (parsed.length > 0) {
+						const formatted = parsed.slice(0, n).map((r, i) =>
+							`${i + 1}. ${r.title}\n  ${r.url}\n  ${r.snippet.slice(0, 150)}`
+						).join("\n\n");
 						return {
-							content: [{ type: "text", text: trunc(raw) }],
+							content: [{ type: "text", text: `[SearXNG]\n${formatted}` }],
 							details: {
 								query: params.query,
-								engine: "mgrep-web-answer",
+								engine: "searxng",
 								sandboxMode: "process-env-cwd-timeout",
 								network: true,
-								autoInstallAttempted: false,
 							},
 						};
 					}
-					return {
-						content: [{ type: "text", text: filterWeb(raw, n) }],
-						details: {
-							query: params.query,
-							engine: "mgrep-web",
-							sandboxMode: "process-env-cwd-timeout",
-							network: true,
-							autoInstallAttempted: false,
-						},
-					};
+				} catch {
+					// SearXNG failed, fall through to mgrep/DDG
 				}
 			}
 
+			// v0.5: Try gh for GitHub queries (opt-in only)
+			if (isGitHubQuery(params.query) && isToolEnabled("gh")) {
+				try {
+					const ghArgs = buildGhSearchArgs(params.query, "repos");
+					const { stdout } = await runCommand(ghArgs[0], ghArgs.slice(1), {
+						timeout: 10000,
+						env: getMinimalEnv("which"),
+					});
+					const results = parseGhSearchOutput(stdout);
+					if (results.length > 0) {
+						const formatted = formatGitHubResults(results, GITHUB_SEARCH_MAX_CHARS);
+						return {
+							content: [{ type: "text", text: `[GitHub search]\n${formatted}` }],
+							details: {
+								query: params.query,
+								engine: "gh",
+								sandboxMode: "process-env-cwd-timeout",
+								network: true,
+							},
+						};
+					}
+				} catch {
+					// gh failed, fall through to mgrep/DDG
+				}
+			}
+
+			// mgrep web search (optional)
+			const mgrepAvailable = isMgrepAvailable();
+			if (mgrepAvailable) {
+				const mgrep = await resolveMgrep();
+				if (mgrep) {
+					const args = ["search", "-w", "-c", "-m", String(n * 3), params.query, getProjectScopedTempDir()];
+					if (params.answer) args.push("-a");
+					const raw = await run(mgrep, args, 30000);
+					if (isMgrepError(raw) || !raw.trim()) {
+						recordMgrepFailure(raw || "empty response");
+					} else {
+						if (params.answer) {
+							return {
+								content: [{ type: "text", text: trunc(raw) }],
+								details: {
+									query: params.query,
+									engine: "mgrep-web-answer",
+									sandboxMode: "process-env-cwd-timeout",
+									network: true,
+									autoInstallAttempted: false,
+								},
+							};
+						}
+						return {
+								content: [{ type: "text", text: filterWeb(raw, n) }],
+								details: {
+									query: params.query,
+									engine: "mgrep-web",
+									sandboxMode: "process-env-cwd-timeout",
+									network: true,
+									autoInstallAttempted: false,
+								},
+							};
+						}
+					}
+				}
+			}
+
+			// v0.5: DDG fallback with improved parsing
 			const fallbackResult = await ddgFallback(params.query, n);
 			return {
-				content: [{ type: "text", text: fallbackResult }],
-				details: {
-					query: params.query,
-					engine: "ddg-fallback",
-					reason: "mgrep unavailable or failed",
+					content: [{ type: "text", text: fallbackResult }],
+					details: {
+						query: params.query,
+						engine: "ddg-fallback",
+						reason: !mgrepAvailable ? getMgrepFailureReason() : "mgrep unavailable or failed",
+					fallbackUsed: true,
 					sandboxMode: "process-env-cwd-timeout",
 					network: true,
 					autoInstallAttempted: false,
 				},
-			};
+				};
 		},
 	});
 
@@ -327,6 +466,48 @@ export default function searchExtension(pi: ExtensionAPI) {
 		async execute(_id, params) {
 			const mode = params.mode ?? "compact";
 			const maxChars = Math.min(6000, Math.max(500, params.maxChars ?? 6000));
+
+			// v0.5: PDF detection — if pdftotext available and URL looks like PDF
+			if (isPdfUrl(params.url) && isToolEnabled("pdftotext")) {
+				try {
+					const fetchResult = await safeFetchText(params.url, {
+						mode: "full",
+						maxChars: 100000, // Get raw bytes for pdftotext
+						timeout: 15000,
+					});
+
+					if (isPdfContentType(fetchResult.contentType)) {
+						// Write to temp file and extract
+						const { writeFileSync, unlinkSync } = await import("node:fs");
+						const tmpPath = `${getProjectScopedTempDir()}/pdf-${Date.now()}.pdf`;
+						try {
+							writeFileSync(tmpPath, fetchResult.text); // safeFetchText returns text
+							const pdftotextArgs = buildPdftotextArgs(tmpPath);
+							const { stdout } = await runCommand(pdftotextArgs[0], pdftotextArgs.slice(1), {
+								timeout: 15000,
+								env: getMinimalEnv("which"),
+							});
+							const parsed = parsePdfOutput(stdout, maxChars);
+							const formatted = formatPdfResults(parsed, params.url);
+							return {
+								content: [{ type: "text", text: formatted }],
+								details: {
+									engine: "pdftotext",
+									sandboxMode: "process-env-cwd-timeout",
+									network: true,
+									url: params.url,
+									contentType: fetchResult.contentType,
+									capabilitiesUsed: ["pdftotext"],
+								},
+							};
+						} finally {
+							try { unlinkSync(tmpPath); } catch {} // cleanup
+						}
+					}
+				} catch {
+					// pdftotext failed, fall through to normal fetch
+				}
+			}
 
 			try {
 				const result = await safeFetchText(params.url, { mode, maxChars });
@@ -431,16 +612,55 @@ export default function searchExtension(pi: ExtensionAPI) {
 				}
 			}
 
-			const mgrep = await resolveMgrep();
-			if (!mgrep) {
-				ctx.ui.notify(
-					"mgrep not installed. Run: npm install -g @mixedbread/mgrep\nOr set PI_SEARCH_AUTO_INSTALL=always",
-					"warning",
-				);
-				return;
+			// v0.5: lexical fallback when mgrep unavailable
+			const mgrepAvail = isMgrepAvailable();
+			if (mgrepAvail) {
+				const mgrep = await resolveMgrep();
+				if (mgrep) {
+					const raw = await run(mgrep, ["search", "-s", "-c", "-a", "-m", "3", query, path], 30000);
+					if (isMgrepError(raw) || !raw.trim()) {
+						recordMgrepFailure(raw || "empty response");
+					} else {
+						ctx.ui.notify(trunc(raw, 3000), "info");
+						return;
+					}
+				}
 			}
-			const raw = await run(mgrep, ["search", "-s", "-c", "-a", "-m", "3", query, path], 30000);
-			ctx.ui.notify(trunc(raw, 3000), "info");
+
+			// Lexical fallback
+			const rg = await resolveRg();
+			if (rg) {
+				const tokens = tokenizeQuery(query);
+				if (tokens.length > 0) {
+					for (const pass of ["phrase", "and", "or"] as const) {
+						const rgArgs = buildRgArgs(tokens, path, pass);
+						const raw = await run(rg, rgArgs, 10000);
+						if (raw && !raw.startsWith("Error:")) {
+							const cards = [{
+								source: path,
+								locator: `pass:${pass}`,
+								snippet: ranked,
+								engine: "ripgrep",
+							}];
+							const reason = !mgrepAvail ? getMgrepFailureReason() : "mgrep unavailable";
+							ctx.ui.notify(buildEvidenceCards(cards, buildDetails({
+								provider: "ripgrep",
+								fallbackUsed: true,
+								mode: "compact",
+							}));
+							return;
+						}
+					}
+				}
+			}
+
+			ctx.ui.notify(
+				"No search engine available.\n" +
+				"Install ripgrep: brew install ripgrep (macOS)\n" +
+				"Install mgrep: npm install -g @mixedbread/mgrep\n" +
+				"Or set PI_SEARCH_AUTO_INSTALL=always to auto-install.",
+				"warning",
+			);
 		},
 	});
 
@@ -448,14 +668,22 @@ export default function searchExtension(pi: ExtensionAPI) {
 		description: "Search the web: /web <query>",
 		handler: async (args, ctx) => {
 			if (!args.trim()) { ctx.ui.notify("Usage: /web <query>", "warning"); return; }
-			const mgrep = await resolveMgrep();
+			const mgrepAvail = isMgrepAvailable();
 			let raw: string;
-			if (mgrep) {
-				raw = await run(mgrep, ["search", "-w", "-a", "-m", "5", args, getProjectScopedTempDir()], 30000);
+			if (mgrepAvail) {
+				const mgrep = await resolveMgrep();
+				if (mgrep) {
+					raw = await run(mgrep, ["search", "-w", "-a", "-m", "5", args, getProjectScopedTempDir()], 30000);
+				} else {
+					raw = "Error: mgrep not found";
+				}
+				if (isMgrepError(raw) || !raw.trim() || raw === "Error: mgrep not found") {
+					recordMgrepFailure(raw || "empty response");
+					raw = await ddgFallback(args, 3);
+				}
 			} else {
-				raw = "Error: mgrep not found";
+				raw = await ddgFallback(args, 3);
 			}
-			if (isMgrepError(raw) || !raw.trim() || raw === "Error: mgrep not found") raw = await ddgFallback(args, 3);
 			ctx.ui.notify(trunc(raw, 3000), "info");
 		},
 	});

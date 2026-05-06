@@ -1,16 +1,18 @@
 # pi-search Test Report
 
-> Updated: 2026-05-06  
-> Package shape: Pi npm package (`pi.extensions = ["extensions/pi-search.ts"]`)  
-> Runtime: Node 22.20 / macOS  
+> Updated: 2026-05-07
+> Package shape: Pi npm package (`pi.extensions = ["extensions/pi-search.ts"]`)
+> Runtime: Node 22.20 / macOS
 > Dependencies: 0 runtime dependencies; Pi-provided peer deps only
+> Version: v0.5.0
 
 ## Summary
 
 `pi-search` is verified as a lightweight Pi search extension package:
 
 - Extension entry: `extensions/pi-search.ts`
-- Shared runtime helpers: `src/security.mjs`
+- Shared runtime helpers: `src/security.mjs`, `src/research.mjs`
+- v0.5.0 new modules: `evidence-cards.ts`, `cli-capabilities.ts`, `mgrep-circuit-breaker.ts`, `lexical-fallback.ts`, `htmlq-parser.ts`, `searxng-provider.ts`, `pdf-extractor.ts`, `github-search.ts`
 - Package manifest: `package.json` → `pi.extensions`
 - Old project-local extension path removed: `.pi/extensions/mgrep.ts`
 - Test directory is local-only and not intended for package publishing
@@ -27,8 +29,8 @@ Results:
 
 | Check | Result |
 |---|---|
-| Automated tests | ✅ 137/137 passed |
-| npm dry-run package | ✅ 8 files, ~29 kB package, ~96 kB unpacked |
+| Automated tests | ✅ 305/305 passed |
+| npm dry-run package | ✅ package verified |
 | Runtime dependencies | ✅ none |
 | Extension load path | ✅ package manifest only |
 | Local/project conflict prevention | ✅ old `.pi/extensions/mgrep.ts` removed |
@@ -46,6 +48,14 @@ Published package contents are intentionally small:
 | `extensions/pi-search.ts` | Pi extension entrypoint |
 | `src/security.mjs` | Minimal command/fetch security helpers |
 | `src/research.mjs` | Default-off research search helper pipeline |
+| `src/evidence-cards.ts` | Unified evidence card output format (v0.5) |
+| `src/cli-capabilities.ts` | CLI tool auto-detection (v0.5) |
+| `src/mgrep-circuit-breaker.ts` | mgrep session-level circuit breaker (v0.5) |
+| `src/lexical-fallback.ts` | Multi-pass ripgrep fallback (v0.5) |
+| `src/htmlq-parser.ts` | htmlq-enhanced DDG HTML parsing (v0.5) |
+| `src/searxng-provider.ts` | SearXNG web search provider (v0.5) |
+| `src/pdf-extractor.ts` | PDF content extraction via pdftotext (v0.5) |
+| `src/github-search.ts` | GitHub search via gh CLI (v0.5) |
 | `package.json` | npm + Pi package manifest |
 | `README.md` | English usage docs |
 | `README_CN.md` | Chinese usage docs |
@@ -84,11 +94,11 @@ Result:
 
 | Metric | Value |
 |---|---:|
-| Test suites | 34 |
-| Tests | 49 |
-| Passed | 49 |
+| Test suites | 98 |
+| Tests | 305 |
+| Passed | 305 |
 | Failed | 0 |
-| Duration | ~69 ms |
+| Duration | ~36 s |
 
 ---
 
@@ -286,6 +296,83 @@ Result:
 | Schema includes `query`, `maxSources`, `maxChars`, `verify` | ✅ |
 | Does not use `mgrep -a` | ✅ |
 | Does not call local search or `validateSearchPath` | ✅ |
+
+### v0.5.0: Evidence Cards
+
+| Scenario | Result |
+|---|---|
+| Evidence card has required fields (title, source, snippet, relevance) | ✅ |
+| Evidence card metadata includes engine type | ✅ |
+| All tools return evidence card format | ✅ |
+| Empty results return empty card array | ✅ |
+
+### v0.5.0: CLI Capability Detection
+
+| Scenario | Result |
+|---|---|
+| Detects `htmlq` availability | ✅ |
+| Detects `pdftotext` availability | ✅ |
+| Detects `gh` availability | ✅ |
+| Local CLI enhancements default to `auto` | ✅ |
+| Network CLI enhancements default to `never` | ✅ |
+| `PI_SEARCH_LOCAL_CLI_ENHANCEMENTS=never` disables detection | ✅ |
+| `PI_SEARCH_NETWORK_CLI_ENHANCEMENTS=always` enables gh | ✅ |
+
+### v0.5.0: mgrep Circuit Breaker
+
+| Scenario | Result |
+|---|---|
+| Breaker starts closed | ✅ |
+| 429 response trips breaker | ✅ |
+| Auth error trips breaker | ✅ |
+| Breaker skips mgrep calls while open | ✅ |
+| Breaker resets after TTL expires | ✅ |
+| `PI_SEARCH_MGREP_BREAKER_TTL_MS` overrides default TTL | ✅ |
+
+### v0.5.0: Lexical Fallback
+
+| Scenario | Result |
+|---|---|
+| Tokenizes multi-word query | ✅ |
+| Runs multi-pass ripgrep per token | ✅ |
+| Deduplicates results | ✅ |
+| Returns ranked evidence cards | ✅ |
+| Handles empty token list gracefully | ✅ |
+
+### v0.5.0: SearXNG Provider
+
+| Scenario | Result |
+|---|---|
+| `PI_SEARCH_WEB_PROVIDER=searxng` uses SearXNG | ✅ |
+| Missing `PI_SEARCH_SEARXNG_URL` falls back to DDG | ✅ |
+| SearXNG JSON format parsed correctly | ✅ |
+| SearXNG HTML format parsed correctly | ✅ |
+| `auto` provider tries SearXNG then DDG | ✅ |
+
+### v0.5.0: GitHub Search
+
+| Scenario | Result |
+|---|---|
+| `gh` search returns structured results | ✅ |
+| Disabled when `PI_SEARCH_NETWORK_CLI_ENHANCEMENTS=never` | ✅ |
+| Handles `gh` not installed gracefully | ✅ |
+
+### v0.5.0: PDF Extraction
+
+| Scenario | Result |
+|---|---|
+| Detects PDF content type | ✅ |
+| Extracts text via `pdftotext` when available | ✅ |
+| Returns raw bytes when `pdftotext` unavailable | ✅ |
+| PDF output wrapped in evidence card | ✅ |
+
+### v0.5.0: htmlq-enhanced DDG Parsing
+
+| Scenario | Result |
+|---|---|
+| Uses htmlq when available for DDG results | ✅ |
+| Falls back to regex parsing when htmlq unavailable | ✅ |
+| Extracts title, URL, snippet from DDG HTML | ✅ |
 
 ---
 
