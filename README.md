@@ -198,6 +198,67 @@ The Agent will edit `extensions/pi-search.ts` for you — change both occurrence
 | `/web <query>` | Web search |
 | `/fetch <url>` | Fetch URL content |
 
+## Environment Variables
+
+All variables are optional. Defaults are safe for zero-config use.
+
+| Variable | Values | Default | Purpose |
+|---|---|---|---|
+| `PI_SEARCH_AUTO_INSTALL` | `never` \| `always` | `never` | Auto-install missing engines (ripgrep/mgrep) via npm. |
+| `PI_SEARCH_ALLOW_OUTSIDE_CWD` | `never` \| `always` | `never` | Allow `search` to query paths outside the project cwd. |
+| `MXBAI_API_KEY` | `mxb_...` | — | mgrep API key. Required for mgrep semantic/web search. |
+| `PI_SEARCH_LLM_ENABLED` | `never` \| `ask` \| `always` | `never` | Enable LLM verification in `research_search`. |
+| `PI_SEARCH_LLM_PROVIDER` | `openai` \| `anthropic` \| `local-openai` | — | LLM provider for verification. |
+| `PI_SEARCH_LLM_MODEL` | model name | — | Model identifier (e.g. `gpt-4o-mini`). |
+| `PI_SEARCH_LLM_BASE_URL` | URL | — | Custom API endpoint (for local/self-hosted LLMs). |
+| `PI_SEARCH_LLM_API_KEY_ENV` | env var name | — | Name of the env var holding your LLM API key (e.g. `OPENAI_API_KEY`). The key itself is never exposed. |
+
+### Quick examples
+
+**Default use — no configuration needed:**
+
+Exact code search via ripgrep and web URL discovery via mgrep/DuckDuckGo work out of the box.
+
+**Enable mgrep semantic search:**
+
+```bash
+export MXBAI_API_KEY="mxb_your_key_here"
+```
+
+**Enable research_search LLM verification (optional):**
+
+```bash
+export PI_SEARCH_LLM_ENABLED=always
+export PI_SEARCH_LLM_PROVIDER=openai
+export PI_SEARCH_LLM_API_KEY_ENV=OPENAI_API_KEY
+export OPENAI_API_KEY="sk-your-key"
+```
+
+With this configuration, `research_search` returns `[VERIFICATION ENABLED]` with a cited answer. Without it, `research_search` returns `[VERIFICATION DISABLED]` with evidence only — no hidden LLM cost.
+
+**Use a local/self-hosted LLM:**
+
+```bash
+export PI_SEARCH_LLM_ENABLED=always
+export PI_SEARCH_LLM_PROVIDER=local-openai
+export PI_SEARCH_LLM_BASE_URL=http://localhost:11434/v1
+export PI_SEARCH_LLM_MODEL=llama3
+export PI_SEARCH_LLM_API_KEY_ENV=OLLAMA_KEY
+export OLLAMA_KEY=unused
+```
+
+**Auto-install engines on first use:**
+
+```bash
+export PI_SEARCH_AUTO_INSTALL=always
+```
+
+**Allow searching outside project directory:**
+
+```bash
+export PI_SEARCH_ALLOW_OUTSIDE_CWD=always
+```
+
 ## How it works
 
 ```

@@ -198,6 +198,67 @@ Agent 会帮你编辑 `extensions/pi-search.ts`，改完两处数字后重启 pi
 | `/web <query>` | 网页搜索 |
 | `/fetch <url>` | 抓取 URL |
 
+## 环境变量
+
+所有变量均为可选。默认值可零配置直接使用。
+
+| 变量 | 取值 | 默认 | 用途 |
+|---|---|---|---|
+| `PI_SEARCH_AUTO_INSTALL` | `never` \| `always` | `never` | 自动安装缺失引擎（ripgrep/mgrep）。 |
+| `PI_SEARCH_ALLOW_OUTSIDE_CWD` | `never` \| `always` | `never` | 允许 `search` 查询项目目录外的路径。 |
+| `MXBAI_API_KEY` | `mxb_...` | — | mgrep API 密钥。mgrep 语义/网页搜索必需。 |
+| `PI_SEARCH_LLM_ENABLED` | `never` \| `ask` \| `always` | `never` | 启用 `research_search` 的 LLM 验证。 |
+| `PI_SEARCH_LLM_PROVIDER` | `openai` \| `anthropic` \| `local-openai` | — | LLM 提供商。 |
+| `PI_SEARCH_LLM_MODEL` | 模型名称 | — | 模型标识（如 `gpt-4o-mini`）。 |
+| `PI_SEARCH_LLM_BASE_URL` | URL | — | 自定义 API 端点（用于本地/自托管 LLM）。 |
+| `PI_SEARCH_LLM_API_KEY_ENV` | 环境变量名 | — | 存储 LLM API 密钥的环境变量名（如 `OPENAI_API_KEY`）。密钥值不会被暴露。 |
+
+### 快速示例
+
+**默认使用 — 无需配置：**
+
+ripgrep 精确代码搜索和 mgrep/DuckDuckGo 网页 URL 发现开箱即用。
+
+**启用 mgrep 语义搜索：**
+
+```bash
+export MXBAI_API_KEY="mxb_your_key_here"
+```
+
+**启用 research_search LLM 验证（可选）：**
+
+```bash
+export PI_SEARCH_LLM_ENABLED=always
+export PI_SEARCH_LLM_PROVIDER=openai
+export PI_SEARCH_LLM_API_KEY_ENV=OPENAI_API_KEY
+export OPENAI_API_KEY="sk-your-key"
+```
+
+配置后 `research_search` 返回 `[VERIFICATION ENABLED]` 带引用答案。不配置则返回 `[VERIFICATION DISABLED]` 仅证据——无隐藏 LLM 成本。
+
+**使用本地/自托管 LLM：**
+
+```bash
+export PI_SEARCH_LLM_ENABLED=always
+export PI_SEARCH_LLM_PROVIDER=local-openai
+export PI_SEARCH_LLM_BASE_URL=http://localhost:11434/v1
+export PI_SEARCH_LLM_MODEL=llama3
+export PI_SEARCH_LLM_API_KEY_ENV=OLLAMA_KEY
+export OLLAMA_KEY=unused
+```
+
+**首次使用时自动安装引擎：**
+
+```bash
+export PI_SEARCH_AUTO_INSTALL=always
+```
+
+**允许搜索项目目录外路径：**
+
+```bash
+export PI_SEARCH_ALLOW_OUTSIDE_CWD=always
+```
+
 ## 工作原理
 
 ```

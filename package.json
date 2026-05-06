@@ -1,6 +1,6 @@
 {
   "name": "@leing2021/pi-search",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Unified search extension for Pi Coding Agent — ripgrep code search + mgrep semantic search + DuckDuckGo fallback. Least-privilege sandbox, safe web retrieval, token-aware output.",
   "keywords": [
     "pi",
