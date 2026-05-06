@@ -1,19 +1,33 @@
-# pi-mgrep
+# pi-search
 
-> Ripgrep + mgrep dual-routing. Both auto-install. Zero config.
+> Ripgrep + mgrep dual-routing search extension for Pi Coding Agent.
 
 Unified search extension for [Pi Coding Agent](https://github.com/badlogic/pi-mono).
 
 ## Quick Start
 
+Install as a Pi package:
+
 ```bash
-npm install -g pi-mgrep
-# Restart pi — ripgrep and mgrep auto-install on first use.
+pi install npm:pi-search
+# Restart pi or run /reload — tools are ready.
 ```
+
+For local development before publishing:
+
+```bash
+pi install /Users/jasonle/code/pi-search
+# or one-off test:
+pi -e /Users/jasonle/code/pi-search
+```
+
+This package exposes `extensions/pi-search.ts`. It does **not** require copying files into `~/.pi/agent/extensions/`.
+
+If upgrading from `pi-mgrep`: remove the old package/local extension first, then install `pi-search`. Tool names stay unchanged: `search`, `web_search`, `web_fetch`.
 
 ## What it gives you
 
-Three LLM-callable tools.
+Three LLM-callable tools with process-level least-privilege sandbox.
 
 ### `search` — Dual-Engine Router
 
@@ -55,11 +69,17 @@ web_search({ query: "React 19 new features", answer: true })
 
 ### `web_fetch` — Page Reader
 
-Fetch URL, strip HTML, return plain text.
+Fetch URL, strip HTML, return agent-ready text with untrusted boundary markers.
 
 ```typescript
 web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19" })
-// → Clean text, max 6000 chars
+// → compact mode (default), untrusted boundary, risk flags, context budget
+
+web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19", mode: "full" })
+// → full sanitized text with boundary
+
+web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19", mode: "quotes" })
+// → relevant quotes/snippets with source metadata
 ```
 
 ## Customizing Results Count
@@ -70,7 +90,7 @@ Default is **5** results per search.
 
 Ask the Agent in natural language — no code changes needed:
 
-> *"Search the web for React 19 new features, return 10 results"*  
+> *"Search the web for React 19 new features, return 10 results"*
 > *"请搜索 React 19 新特性，返回 10 条结果"*
 
 The Agent will automatically pass `count: 10` to `web_search`. Works in English and Chinese.
@@ -79,10 +99,10 @@ The Agent will automatically pass `count: 10` to `web_search`. Works in English 
 
 Ask the Agent directly:
 
-> *"请将 web_search 的默认返回数量从 5 改为 10"*  
+> *"请将 web_search 的默认返回数量从 5 改为 10"*
 > *"Change the default result count of web_search from 5 to 10"*
 
-The Agent will edit `.pi/extensions/mgrep.ts` for you — change both occurrences of the number, then restart pi.
+The Agent will edit `extensions/pi-search.ts` for you — change both occurrences of the number, then restart pi.
 
 ## Interactive Commands
 
@@ -95,29 +115,47 @@ The Agent will edit `.pi/extensions/mgrep.ts` for you — change both occurrence
 ## How it works
 
 ```
-┌─ resolveRg() ──────────────────────────────────────────────┐
-│  which rg → known paths → brew install ripgrep              │
-├─ resolveMgrep() ───────────────────────────────────────────┤
-│  which mgrep → known paths → npm install -g @mixedbread/mgrep │
-├────────────────────────────────────────────────────────────┤
+┌─ resolveBin() ────────────────────────────────────────────┐
+│  PATH lookup → known paths → install instructions         │
+│  (auto-install requires PI_SEARCH_AUTO_INSTALL=always)    │
+├───────────────────────────────────────────────────────────┤
+│  runCommand() — least-privilege runner                     │
+│    execFile only · minimal env · timeout · maxBuffer       │
+├───────────────────────────────────────────────────────────┤
+│  safeFetchText() — secure web retrieval                    │
+│    SSRF protection · DNS/IP validation · redirect control  │
+│    content-type check · size limit · timeout               │
+├───────────────────────────────────────────────────────────┤
 │  Tool: search                                               │
 │    code-like? → rg (if available, 0.02s)                    │
 │             els → mgrep (3-8s, semantic)                    │
 │             answer=true? → -a (AI summary)                  │
-├────────────────────────────────────────────────────────────┤
+├───────────────────────────────────────────────────────────┤
 │  Tool: web_search                                           │
-│    mgrep -w /tmp/mgrep-empty                                │
-│    fail? → DuckDuckGo HTML (zero-dep fallback)              │
-├────────────────────────────────────────────────────────────┤
+│    mgrep -w /tmp/mgrep-empty (count clamped 1-10)          │
+│    fail? → DuckDuckGo via safeFetchText()                   │
+├───────────────────────────────────────────────────────────┤
 │  Tool: web_fetch                                            │
-│    Node.js http.get → strip HTML → plain text               │
-└────────────────────────────────────────────────────────────┘
+│    safeFetchText() → sanitize → mode (compact/quotes/full) │
+│    untrusted boundary · risk flags · context budget         │
+└───────────────────────────────────────────────────────────┘
 ```
+
+## Security
+
+- **Least-privilege runner**: child processes get minimal env allowlists, no sensitive tokens.
+- **Safe web retrieval**: all fetch paths go through `safeFetchText()` with SSRF protection.
+- **Auto-install opt-in**: default `never`. Set `PI_SEARCH_AUTO_INSTALL=always` to enable.
+- **Untrusted boundary**: all web content is explicitly marked as untrusted evidence.
+- **Risk flags**: prompt injection phrases are detected and flagged.
+
+These controls are intentionally lightweight: `pi-search` is a search extension, not a browser agent or crawler.
 
 ## Requirements
 
 - **Pi Coding Agent** ≥ 0.73.0
-- Everything else auto-installs (ripgrep + mgrep)
+- **ripgrep** — install manually or set `PI_SEARCH_AUTO_INSTALL=always`
+- **mgrep** — install manually: `npm install -g @mixedbread/mgrep`
 
 ## Authentication
 
@@ -142,8 +180,9 @@ export MXBAI_API_KEY="mxb_your_key_here"
 ## Design choices
 
 - **Dual-engine** — ripgrep 0.02s for code, mgrep 3-8s for natural language
-- **Auto-install** — both engines install via system package managers
+- **Least-privilege sandbox** — process-level env/cwd/timeout isolation, no Docker required
 - **Graceful degradation** — rg missing → mgrep for all. mgrep missing → DDG for web
+- **Token-aware output** — compact/quotes/full modes with untrusted boundaries and risk flags
 - **Output limits** — 6000 char cap on every tool
 
 ## Test Report
@@ -161,7 +200,7 @@ export MXBAI_API_KEY="mxb_your_key_here"
 | DuckDuckGo fallback | Degrade | DDG | 1.3s |
 | 6000-char truncation | Edge | — | — |
 
-**15/15 passed.** Full details: [docs/test-report.md](docs/test-report.md).
+**49/49 automated tests passed.** Full details: [docs/test-report.md](docs/test-report.md).
 
 ## License
 

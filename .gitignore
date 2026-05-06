@@ -1,3 +1,12 @@
 node_modules/
 .DS_Store
 *.log
+
+# Local-only development/runtime artifacts
+.context/
+.pi/
+tests/
+
+# Local docs are not published/committed, except the public test report
+docs/*
+!docs/test-report.md

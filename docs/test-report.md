@@ -1,57 +1,225 @@
-# pi-mgrep Test Report
+# pi-search Test Report
 
-> 2026-05-05 | mgrep 0.1.12 / ripgrep 15.1.0 / Node 22.20 / macOS
+> Updated: 2026-05-06  
+> Package shape: Pi npm package (`pi.extensions = ["extensions/pi-search.ts"]`)  
+> Runtime: Node 22.20 / macOS  
+> Dependencies: 0 runtime dependencies; Pi-provided peer deps only
 
-## Local Search (`search`)
+## Summary
 
-| # | Scenario | Engine | Time | Result |
-|---|---|---|---|---|
-| 1 | Code symbol `registerTool` (camelCase) | ripgrep | 0.007s | ✅ 4 hits |
-| 2 | Snake_case pattern `ensureEmptyDir` | ripgrep | 0.015s | ✅ routed correctly |
-| 3 | NL `web search fallback logic` | mgrep | 12.9s | ✅ 3 files, relevance scores |
-| 4 | NL + answer `how does the extension handle...` | mgrep | 13.7s | ✅ AI summary + citations |
-| 5 | Chinese NL `错误处理策略` | mgrep | 4.5s | ✅ 3 files |
+`pi-search` is verified as a lightweight Pi search extension package:
 
-## Web Search (`web_search`)
+- Extension entry: `extensions/pi-search.ts`
+- Shared runtime helpers: `src/security.mjs`
+- Package manifest: `package.json` → `pi.extensions`
+- Old project-local extension path removed: `.pi/extensions/mgrep.ts`
+- Test directory is local-only and not intended for package publishing
+- Docs are local-only except this report
 
-| # | Scenario | Engine | Time | Result |
-|---|---|---|---|---|
-| 6 | Default `count: 5` — `TypeScript 5.7 new features` | mgrep | 5.1s | ✅ multiple results, filterWeb caps at 5 |
-| 7 | `answer: true` — `best practices TypeScript error handling 2025` | mgrep | 9.9s | ✅ structured answer + 9 citations |
-| 8 | URL extraction — `nodejs best practices` | mgrep | — | ✅ 10 unique URLs, 0 duplicates |
-| 9 | `count: 3` truncation — `docker compose best practices` | filterWeb | — | ✅ exactly 3 URLs |
-| 10 | `count: 7` truncation — `python asyncio` | filterWeb | — | ✅ exactly 7 URLs |
+Latest verification:
 
-## Web Fetch (`web_fetch`)
+```bash
+npm test
+npm pack --dry-run
+```
 
-| # | Scenario | Time | Result |
-|---|---|---|---|
-| 11 | Fetch `example.com` + HTML strip | <1s | ✅ clean plain text |
+Results:
 
-## Degradation & Edge Cases
-
-| # | Scenario | Time | Result |
-|---|---|---|---|
-| 12 | DuckDuckGo fallback — `TypeScript 5.7 decorators` | 1.3s | ✅ 10 titles / 40 URLs / 10 snippets parsed |
-| 13 | DDG result formatting | — | ✅ `[DuckDuckGo fallback]\n1. Title\n  URL\n  Snippet` |
-| 14 | 6000-char truncation (12,000 chars input) | — | ✅ output 6,035 chars (6,000 + 35 truncation notice) |
-| 15 | 6000-char truncation (within limit) | — | ✅ 33 chars, identical, no truncation |
-
-## Key Findings
-
-- **Dual-engine routing**: ripgrep <0.02s for code patterns; mgrep 3–13s for natural language. Gap consistent with docs.
-- **Default count 3→5**: confirmed in code and runtime. `filterWeb` truncates `n × 3` raw → exactly `n`.
-- **AI summaries**: structured, cited answers for both local and web searches.
-- **DuckDuckGo fallback**: HTML parsing correct; activates when mgrep unavailable.
-- **6000-char cap**: applies only when exceeded, with clear truncation notice.
-- **Chinese queries**: identical behavior to English for semantic search.
+| Check | Result |
+|---|---|
+| Automated tests | ✅ 49/49 passed |
+| npm dry-run package | ✅ 6 files, 15.6 kB package, 51.0 kB unpacked |
+| Runtime dependencies | ✅ none |
+| Extension load path | ✅ package manifest only |
+| Local/project conflict prevention | ✅ old `.pi/extensions/mgrep.ts` removed |
 
 ---
 
-| Category | Total | Passed |
-|---|---|---|
-| Local Search | 5 | ✅ 5 |
-| Web Search | 5 | ✅ 5 |
-| Web Fetch | 1 | ✅ 1 |
-| Degradation & Edges | 4 | ✅ 4 |
-| **Total** | **15** | **✅ 15** |
+## Package Verification
+
+### `npm pack --dry-run`
+
+Published package contents are intentionally small:
+
+| File | Purpose |
+|---|---|
+| `extensions/pi-search.ts` | Pi extension entrypoint |
+| `src/security.mjs` | Minimal command/fetch security helpers |
+| `package.json` | npm + Pi package manifest |
+| `README.md` | English usage docs |
+| `README_CN.md` | Chinese usage docs |
+| `docs/test-report.md` | Public verification report |
+
+Dry-run result:
+
+| Metric | Value |
+|---|---:|
+| Package size | 15.6 kB |
+| Unpacked size | 51.0 kB |
+| Total files | 6 |
+
+### Package Manifest Checks
+
+| Check | Result |
+|---|---|
+| `package.json.name === "pi-search"` | ✅ |
+| `keywords` includes `pi-package` | ✅ |
+| `pi.extensions` points to `extensions/pi-search.ts` | ✅ |
+| `files` excludes local-only docs/tests | ✅ |
+| `peerDependencies` lists Pi-provided packages | ✅ |
+
+---
+
+## Automated Test Result
+
+Command:
+
+```bash
+npm test
+```
+
+Result:
+
+| Metric | Value |
+|---|---:|
+| Test suites | 34 |
+| Tests | 49 |
+| Passed | 49 |
+| Failed | 0 |
+| Duration | ~69 ms |
+
+---
+
+## Test Coverage
+
+### Rename / Package Identity
+
+| Scenario | Result |
+|---|---|
+| Package name is `pi-search` | ✅ |
+| Repository URL points to `pi-search` | ✅ |
+| README title is `# pi-search` | ✅ |
+| README_CN title is `# pi-search` | ✅ |
+| README install command uses `pi install npm:pi-search` | ✅ |
+| README_CN install command uses `pi install npm:pi-search` | ✅ |
+| Extension top comment mentions `pi-search` | ✅ |
+| Compatibility migration notes exist locally | ✅ |
+| `PI_SEARCH_AUTO_INSTALL` documented | ✅ |
+
+### Runtime Policy / Minimal Env
+
+| Scenario | Result |
+|---|---|
+| `getMinimalEnv('rg')` strips `GITHUB_TOKEN` | ✅ |
+| `getMinimalEnv('mgrep-web')` includes `MXBAI_API_KEY` | ✅ |
+| `getMinimalEnv('rg')` excludes `MXBAI_API_KEY` | ✅ |
+| `runCommand()` child process does not inherit sensitive keys | ✅ |
+| `getAutoInstallPolicy()` defaults to `never` | ✅ |
+| `PI_SEARCH_AUTO_INSTALL=always` is recognized | ✅ |
+| `PI_SEARCH_AUTO_INSTALL` overrides deprecated env | ✅ |
+| Deprecated `PI_MGREP_AUTO_INSTALL` fallback works | ✅ |
+| `PI_SEARCH_AUTO_INSTALL=ask` is recognized | ✅ |
+
+### Safe Fetch Runtime
+
+| Scenario | Result |
+|---|---|
+| Rejects `http:` unless explicitly allowed | ✅ |
+| Rejects URL credentials | ✅ |
+| Rejects localhost hostname | ✅ |
+| Rejects redirect to localhost | ✅ |
+| Rejects DNS result pointing to private IP | ✅ |
+| Rejects binary `Content-Type` | ✅ |
+| Allows text/html with charset suffix | ✅ |
+| Enforces streaming byte limit | ✅ |
+| Handles circular redirects without infinite loop | ✅ |
+| Removes script content from HTML | ✅ |
+| Detects prompt-injection risk phrases | ✅ |
+| Detects hidden CSS | ✅ |
+| Supports compact mode | ✅ |
+| Supports quotes mode | ✅ |
+| Supports full mode | ✅ |
+
+### Static Security Regression
+
+| Scenario | Result |
+|---|---|
+| No shell-string `execSync` | ✅ |
+| No `node -e` subprocess fetch path | ✅ |
+| No direct `curl -L` fetch path | ✅ |
+| Auto-install is gated by explicit policy | ✅ |
+| `runCommand()` exists | ✅ |
+| `safeFetchText()` exists | ✅ |
+| No child process receives bare `process.env` | ✅ |
+| Fetch paths are unified through `safeFetchText()` | ✅ |
+
+### Token-Aware Output
+
+| Scenario | Result |
+|---|---|
+| `web_fetch` accepts `mode` parameter | ✅ |
+| `web_fetch` accepts `maxChars` parameter | ✅ |
+| Untrusted boundary markers exist | ✅ |
+| Prompt injection risk flags exist | ✅ |
+| Context budget metadata exists | ✅ |
+| Web content is marked `untrusted-web` | ✅ |
+| `web_search.count` is clamped | ✅ |
+
+---
+
+## Manual Functional Baseline
+
+Historical manual checks remain valid for the core search behavior:
+
+| Category | Scenario | Engine | Result |
+|---|---|---|---|
+| Local Search | Code symbol `registerTool` | ripgrep | ✅ fast exact search |
+| Local Search | Natural-language query | mgrep | ✅ semantic results |
+| Local Search | Chinese natural-language query | mgrep | ✅ semantic results |
+| Web Search | Default `count: 5` | mgrep web | ✅ capped results |
+| Web Search | `count: 3` / `count: 7` | filterWeb | ✅ output count respected |
+| Web Fetch | HTML page fetch and strip | safeFetchText | ✅ clean text output |
+| Degradation | DuckDuckGo fallback | safeFetchText + DDG | ✅ fallback path available |
+| Token Limit | Long output | truncation helper | ✅ capped output |
+
+---
+
+## Current Packaging Decision
+
+The project is now maintained as a Pi package, not as a manually copied extension file.
+
+Recommended install after publish:
+
+```bash
+pi install npm:pi-search
+```
+
+Local development install:
+
+```bash
+pi install /Users/jasonle/code/pi-search
+```
+
+One-off test:
+
+```bash
+pi -e /Users/jasonle/code/pi-search
+```
+
+Do **not** also keep an old copied extension at:
+
+```text
+~/.pi/agent/extensions/mgrep.ts
+~/.pi/agent/extensions/pi-search.ts
+<project>/.pi/extensions/mgrep.ts
+```
+
+Keeping both old local extension files and the package enabled can duplicate tool registration.
+
+---
+
+## Notes
+
+- `docs/` is local-only except this report.
+- `tests/` is local-only and excluded from commits/published package.
+- The package remains intentionally small: search tools, safe single-page fetch, no browser agent, no crawler, no heavy sandbox dependency.
