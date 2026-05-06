@@ -17,9 +17,20 @@ This package exposes `extensions/pi-search.ts` through the Pi package manifest.
 
 If upgrading from `pi-mgrep`: remove the old package or extension first, then install `pi-search`. Tool names stay unchanged: `search`, `web_search`, `web_fetch`.
 
+## Problems it solves
+
+AI coding agents need search as infrastructure, not as a pile of ad-hoc shell commands. `pi-search` solves four daily problems:
+
+1. **Fast exact code lookup** — symbols, filenames, syntax snippets, and paths should be near-instant and offline.
+2. **Semantic local search** — natural-language questions should find relevant code even when the exact words do not match.
+3. **Current web evidence** — agents need fresh URLs and fetched page text with clear untrusted-content boundaries.
+4. **Safe defaults** — command execution, local paths, web fetching, and optional LLM verification should be explicit, bounded, and auditable.
+
+It keeps these responsibilities small: `pi-search` is a lightweight search/evidence extension, not a multi-agent framework.
+
 ## What it gives you
 
-Three LLM-callable tools with process-level least-privilege sandbox.
+Four LLM-callable tools with process-level least-privilege sandbox.
 
 ### `search` — Dual-Engine Router
 
@@ -34,7 +45,7 @@ Auto-routes based on query type:
 | `error handling logic` (NL) | **mgrep** | 3-8s |
 | `how to handle errors` (NL) | **mgrep** | 3-8s |
 
-If ripgrep is unavailable, mgrep handles everything silently.
+If ripgrep is unavailable, mgrep handles local queries. If mgrep is unavailable or fails, web search falls back to DuckDuckGo where possible.
 
 ```typescript
 search({ query: "registerTool" })
@@ -99,6 +110,64 @@ Output always includes explicit status:
 
 Does not read local files. Does not perform query rewrite.
 
+## Feature highlights
+
+| Feature | What it means |
+|---|---|
+| Auto routing | Code-like queries use `ripgrep`; natural-language queries use `mgrep`. |
+| Web evidence | `web_search` discovers URLs; `web_fetch` reads pages safely with untrusted boundaries. |
+| Optional verified research | `research_search` builds a web-only evidence pack; LLM verification is default-off. |
+| Explicit security policy | Command, path, network, temp-dir, and audit policies are visible in tool details. |
+| Graceful fallback | Missing/failing mgrep web search can fall back to DuckDuckGo URL discovery. |
+| Low hidden cost | Default install uses no extra LLM verifier and no auto-install network calls. |
+
+## Search efficiency by scenario
+
+Measured from the project test report and manual baseline. Times vary by machine/network, but the search path changes are stable.
+
+| Scenario | Without `pi-search` | With `pi-search` | Practical gain |
+|---|---|---|---|
+| Exact symbol / function lookup | Agent may run broad shell searches or ask you for file hints | `search({ query: "registerTool" })` → ripgrep, ~0.007-0.02s | Instant offline lookup with file+line evidence |
+| Filename / extension / path query | Manual `find`/`grep` style exploration | Auto-routed to ripgrep, ~0.02s | Less prompt overhead; fewer tool attempts |
+| Natural-language local question | Exact grep often misses semantic matches | mgrep semantic search, typically 3-13s | Finds conceptually related code without exact terms |
+| Chinese natural-language local query | Usually requires guessing English identifiers first | mgrep semantic search, observed ~4.5s | Better bilingual codebase exploration |
+| Web URL discovery | Agent may use general web search with inconsistent output | `web_search`, count-clamped structured URLs, observed ~5s via mgrep or ~1.3s DDG fallback | Predictable source list for follow-up fetches |
+| Page reading | Raw HTML or oversized pasted pages | `web_fetch` compact/quotes/full, usually <1s after network | Cleaner context, risk flags, explicit untrusted markers |
+| Cited web research | Agent composes web search + fetch + answer manually | `research_search` gathers bounded evidence; verifier is explicit/default-off | Safer daily research flow with no silent LLM cost |
+
+## Super Pi integration and standalone use
+
+`pi-search` works best with Super Pi because Super Pi's planning/review skills naturally call `search`, `web_search`, `web_fetch`, and `research_search` as evidence tools during brainstorm → plan → work → review workflows.
+
+You **do not need Super Pi** to use this package. `pi-search` is a standard Pi Coding Agent package:
+
+- Required: **Pi Coding Agent** runtime.
+- Optional: **Super Pi** skills/workflows.
+- Not intended as: a standalone Unix CLI outside Pi. The package exposes Pi extension tools; the underlying helpers are ordinary source modules, but the user-facing product is the Pi extension.
+
+Typical choices:
+
+| Setup | Supported? | Notes |
+|---|---:|---|
+| Pi Coding Agent + `pi-search` | ✅ | Fully supported standalone Pi extension usage. |
+| Super Pi + `pi-search` | ✅ Recommended | Best Agent workflow: search/evidence tools pair with CE skills. |
+| No Pi runtime, direct shell only | ❌ | Use `rg`, `mgrep`, or your own scripts directly instead. |
+
+## mgrep quota/auth failure fallback
+
+`mgrep` may fail because it is not installed, not authenticated, has network errors, or hits provider quota/rate limits (for example HTTP `429`). `pi-search` handles this differently by tool:
+
+| Tool path | If mgrep works | If mgrep is missing/fails/quota exhausted |
+|---|---|---|
+| `search` exact/code-like | Uses ripgrep first | Still uses ripgrep when available; no mgrep quota needed |
+| `search` natural-language | Uses mgrep semantic local search | Returns a clear install/auth/error message; no semantic fallback is fabricated |
+| `web_search` URLs | Uses mgrep web search | Falls back to DuckDuckGo HTML search through `safeFetchText()` |
+| `web_search({ answer: true })` | Uses mgrep answer mode | Falls back to DuckDuckGo URLs only; no AI answer is fabricated |
+| `/web` command | Uses mgrep answer mode when available | Falls back to DuckDuckGo results |
+| `research_search` | Uses DuckDuckGo discovery + safe fetch evidence | Does not depend on mgrep answer mode; LLM verifier remains default-off |
+
+Fallbacks are intentionally honest: if AI summary/semantic ranking is unavailable, the tool returns evidence or URLs rather than pretending an answer was verified.
+
 ## Customizing Results Count
 
 Default is **5** results per search.
@@ -149,12 +218,16 @@ The Agent will edit `extensions/pi-search.ts` for you — change both occurrence
 │             answer=true? → -a (AI summary)                  │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: web_search                                           │
-│    mgrep -w /tmp/mgrep-empty (count clamped 1-10)          │
+│    mgrep -w project-scoped empty dir (count clamped 1-10)   │
 │    fail? → DuckDuckGo via safeFetchText()                   │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: web_fetch                                            │
 │    safeFetchText() → sanitize → mode (compact/quotes/full) │
 │    untrusted boundary · risk flags · context budget         │
+├───────────────────────────────────────────────────────────┤
+│  Tool: research_search                                      │
+│    DuckDuckGo discovery → safeFetchText evidence pack       │
+│    optional verifier → explicit verification status         │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -219,7 +292,7 @@ See [Security Policy](docs/security-policy.md) for details.
 | DuckDuckGo fallback | Degrade | DDG | 1.3s |
 | 6000-char truncation | Edge | — | — |
 
-**49/49 automated tests passed.** Full details: [docs/test-report.md](docs/test-report.md).
+**135/135 automated tests passed.** Full details: [docs/test-report.md](docs/test-report.md).
 
 ## License
 

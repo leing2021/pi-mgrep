@@ -17,9 +17,20 @@ pi install npm:@leing2021/pi-search
 
 如从 `pi-mgrep` 升级：先移除旧包或旧扩展，再安装 `pi-search`。工具名保持不变：`search`、`web_search`、`web_fetch`。
 
+## 项目解决的问题
+
+AI Coding Agent 需要稳定的搜索基础设施，而不是临时拼接的 shell 命令。`pi-search` 解决四个日常问题：
+
+1. **快速精确代码查找** — 符号、文件名、语法片段、路径应当近乎即时且离线可用。
+2. **本地语义搜索** — 自然语言问题即使没有命中精确词，也应该能找到相关代码。
+3. **当前网页证据** — Agent 需要新鲜 URL 和清理后的网页正文，并明确标记不可信内容边界。
+4. **安全默认值** — 命令执行、本地路径、网页抓取、可选 LLM 验证都应显式、有边界、可审计。
+
+它刻意保持职责小而清晰：`pi-search` 是轻量搜索/证据扩展，不是多 Agent 框架。
+
 ## 提供的工具
 
-三个 LLM 可调用的工具，内置进程级最小权限沙箱。
+四个 LLM 可调用的工具，内置进程级最小权限沙箱。
 
 ### `search` — 双引擎路由
 
@@ -34,7 +45,7 @@ pi install npm:@leing2021/pi-search
 | `error handling logic` (自然语言) | **mgrep** | 3-8s |
 | `错误处理逻辑` (自然语言) | **mgrep** | 3-8s |
 
-ripgrep 不可用时，mgrep 自动接管所有查询。
+ripgrep 不可用时，mgrep 接管本地查询。mgrep 不可用或失败时，网页搜索会尽可能回退到 DuckDuckGo。
 
 ```typescript
 search({ query: "registerTool" })
@@ -99,6 +110,64 @@ research_search({ query: "React Server Components 是什么", verify: false })
 
 不读取本地文件。不进行查询重写。
 
+## 功能特点
+
+| 特性 | 含义 |
+|---|---|
+| 自动路由 | 代码类查询走 `ripgrep`；自然语言查询走 `mgrep`。 |
+| 网页证据 | `web_search` 发现 URL；`web_fetch` 安全读取网页并标记不可信边界。 |
+| 可选研究验证 | `research_search` 构建仅网页证据包；LLM 验证默认关闭。 |
+| 显式安全策略 | 命令、路径、网络、临时目录、审计策略会出现在工具 details 中。 |
+| 优雅降级 | mgrep 网页搜索缺失/失败时，可回退到 DuckDuckGo URL 发现。 |
+| 低隐藏成本 | 默认安装不触发额外 LLM 验证，也不自动联网安装依赖。 |
+
+## 按搜索场景的效率对比
+
+基于项目测试报告与手工基线。具体耗时受机器和网络影响，但搜索路径差异稳定。
+
+| 场景 | 不安装 `pi-search` | 安装 `pi-search` 后 | 实际收益 |
+|---|---|---|---|
+| 精确符号/函数查找 | Agent 可能反复尝试 shell 搜索，或需要你提示文件位置 | `search({ query: "registerTool" })` → ripgrep，约 0.007-0.02s | 离线即时定位，返回文件+行号证据 |
+| 文件名/扩展名/路径查询 | 手动 `find`/`grep` 式探索 | 自动路由到 ripgrep，约 0.02s | 减少 prompt 往返和工具尝试 |
+| 本地自然语言问题 | 精确 grep 容易漏掉语义相关代码 | mgrep 语义搜索，通常 3-13s | 不必猜精确关键词也能找代码 |
+| 中文自然语言本地查询 | 往往要先猜英文标识符 | mgrep 语义搜索，实测约 4.5s | 更适合中英混合代码库探索 |
+| 网页 URL 发现 | Agent 使用普通网页搜索，输出格式不稳定 | `web_search` 返回数量受控的结构化 URL，mgrep 约 5s 或 DDG 回退约 1.3s | 更适合后续 `web_fetch` 精读 |
+| 网页正文读取 | 原始 HTML 或过大的粘贴内容 | `web_fetch` compact/quotes/full，网络后通常 <1s | 上下文更干净，带风险标记和不可信边界 |
+| 带引用网页研究 | Agent 手工组合搜索、抓取、回答 | `research_search` 收集有界证据；验证显式且默认关闭 | 更安全的日常研究流，无静默 LLM 成本 |
+
+## 与 Super Pi 配合，以及是否可单独使用
+
+`pi-search` 与 Super Pi 搭配最佳：Super Pi 的 brainstorm → plan → work → review 工作流会自然调用 `search`、`web_search`、`web_fetch`、`research_search` 作为证据工具。
+
+你**不需要安装 Super Pi** 也能使用本包。`pi-search` 是标准 Pi Coding Agent package：
+
+- 必需：**Pi Coding Agent** runtime。
+- 可选：**Super Pi** skills/workflows。
+- 不适合：脱离 Pi runtime 当作普通 Unix CLI 使用。本包暴露的是 Pi extension tools；底层 helper 虽然是普通源码模块，但面向用户的产品形态是 Pi 扩展。
+
+典型使用方式：
+
+| 组合 | 支持情况 | 说明 |
+|---|---:|---|
+| Pi Coding Agent + `pi-search` | ✅ | 完全支持，作为独立 Pi 扩展使用。 |
+| Super Pi + `pi-search` | ✅ 推荐 | 最佳 Agent 工作流：CE 技能 + 搜索/证据工具。 |
+| 没有 Pi runtime，只想 shell 使用 | ❌ | 请直接使用 `rg`、`mgrep` 或自己的脚本。 |
+
+## mgrep 免费额度/认证失败后的 fallback
+
+`mgrep` 可能因为未安装、未认证、网络错误、免费额度/速率限制（例如 HTTP `429`）而失败。`pi-search` 按工具路径分别处理：
+
+| 工具路径 | mgrep 可用时 | mgrep 缺失/失败/额度用完时 |
+|---|---|---|
+| `search` 精确/代码类 | 优先用 ripgrep | 仍用 ripgrep；不消耗 mgrep 额度 |
+| `search` 自然语言 | 用 mgrep 本地语义搜索 | 返回明确安装/认证/错误信息；不会伪造语义结果 |
+| `web_search` URL | 用 mgrep web search | 通过 `safeFetchText()` 回退到 DuckDuckGo HTML 搜索 |
+| `web_search({ answer: true })` | 用 mgrep answer 模式 | 回退为 DuckDuckGo URL 列表；不会伪造 AI 答案 |
+| `/web` 命令 | mgrep 可用时使用 answer 模式 | 回退为 DuckDuckGo 结果 |
+| `research_search` | DuckDuckGo 发现 + safe fetch 证据 | 不依赖 mgrep answer 模式；LLM verifier 仍默认关闭 |
+
+fallback 的原则是诚实：AI 摘要/语义排序不可用时，工具返回证据或 URL，不伪装成已验证答案。
+
 ## 自定义返回数量
 
 默认返回 **5** 条结果。
@@ -149,12 +218,16 @@ Agent 会帮你编辑 `extensions/pi-search.ts`，改完两处数字后重启 pi
 │     answer=true? → -a (AI 摘要)                             │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: web_search                                           │
-│    mgrep -w /tmp/mgrep-empty（count 限制 1-10）             │
+│    mgrep -w 项目级空临时目录（count 限制 1-10）              │
 │    失效? → DuckDuckGo via safeFetchText()                   │
 ├───────────────────────────────────────────────────────────┤
 │  Tool: web_fetch                                            │
 │    safeFetchText() → 清理 → mode (compact/quotes/full)     │
 │    不可信边界 · 风险标记 · 上下文预算                        │
+├───────────────────────────────────────────────────────────┤
+│  Tool: research_search                                      │
+│    DuckDuckGo 发现 → safeFetchText 证据包                   │
+│    可选 verifier → 显式验证状态                              │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -217,7 +290,7 @@ export MXBAI_API_KEY="mxb_your_key_here"
 | 降级 | DuckDuckGo 回退 | DDG | 1.3s |
 | 边界 | 6000 字符截断 | — | — |
 
-**49 项自动化测试全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
+**135 项自动化测试全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
 
 ## License
 
