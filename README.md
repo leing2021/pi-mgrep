@@ -13,17 +13,9 @@ pi install npm:@leing2021/pi-search
 # Restart pi or run /reload — tools are ready.
 ```
 
-For local development before publishing:
+This package exposes `extensions/pi-search.ts` through the Pi package manifest.
 
-```bash
-pi install /Users/jasonle/code/pi-search
-# or one-off test:
-pi -e /Users/jasonle/code/pi-search
-```
-
-This package exposes `extensions/pi-search.ts`. It does **not** require copying files into `~/.pi/agent/extensions/`.
-
-If upgrading from `pi-mgrep`: remove the old package/local extension first, then install `pi-search`. Tool names stay unchanged: `search`, `web_search`, `web_fetch`.
+If upgrading from `pi-mgrep`: remove the old package or extension first, then install `pi-search`. Tool names stay unchanged: `search`, `web_search`, `web_fetch`.
 
 ## What it gives you
 
@@ -81,6 +73,31 @@ web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19", mode: "full" })
 web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19", mode: "quotes" })
 // → relevant quotes/snippets with source metadata
 ```
+
+### `research_search` — Web Research with Verification (v0.4.1, default-off)
+
+Web-only research tool that discovers sources, fetches evidence, and optionally verifies claims with an LLM.
+
+**Default-off**: LLM verification requires `PI_SEARCH_LLM_ENABLED=always`.
+
+```typescript
+// Default: returns evidence with [VERIFICATION DISABLED]
+research_search({ query: "what is React Server Components" })
+
+// With LLM enabled: returns [VERIFICATION ENABLED] + cited answer
+research_search({ query: "what is React Server Components", maxSources: 3 })
+
+// Explicit verification control
+research_search({ query: "what is React Server Components", verify: false })
+// → [VERIFICATION DISABLED], evidence only
+```
+
+Output always includes explicit status:
+- `[VERIFICATION ENABLED]` — LLM verified answer with citations
+- `[VERIFICATION DISABLED]` — evidence only, no LLM used
+- `[VERIFICATION FAILED: reason]` — LLM attempted but failed
+
+Does not read local files. Does not perform query rewrite.
 
 ## Customizing Results Count
 
@@ -173,7 +190,6 @@ mgrep login
 2. Create API key → export:
 
 ```bash
-# ~/.zshrc
 export MXBAI_API_KEY="mxb_your_key_here"
 ```
 
@@ -181,9 +197,12 @@ export MXBAI_API_KEY="mxb_your_key_here"
 
 - **Dual-engine** — ripgrep 0.02s for code, mgrep 3-8s for natural language
 - **Least-privilege sandbox** — process-level env/cwd/timeout isolation, no Docker required
+- **Explicit security policies** (v0.4.0) — command profiles, path boundary, network policy, project-scoped temp dir
 - **Graceful degradation** — rg missing → mgrep for all. mgrep missing → DDG for web
 - **Token-aware output** — compact/quotes/full modes with untrusted boundaries and risk flags
 - **Output limits** — 6000 char cap on every tool
+
+See [Security Policy](docs/security-policy.md) for details.
 
 ## Test Report
 

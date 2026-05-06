@@ -13,17 +13,9 @@ pi install npm:@leing2021/pi-search
 # 重启 pi 或执行 /reload — 工具即可使用。
 ```
 
-发布前本地开发可用：
+本包通过 Pi package manifest 暴露 `extensions/pi-search.ts`。
 
-```bash
-pi install /Users/jasonle/code/pi-search
-# 或单次测试：
-pi -e /Users/jasonle/code/pi-search
-```
-
-本包暴露 `extensions/pi-search.ts`，不需要手动复制文件到 `~/.pi/agent/extensions/`。
-
-如从 `pi-mgrep` 升级：先移除旧包或旧本地扩展，再安装 `pi-search`。工具名保持不变：`search`、`web_search`、`web_fetch`。
+如从 `pi-mgrep` 升级：先移除旧包或旧扩展，再安装 `pi-search`。工具名保持不变：`search`、`web_search`、`web_fetch`。
 
 ## 提供的工具
 
@@ -81,6 +73,31 @@ web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19", mode: "full" })
 web_fetch({ url: "https://react.dev/blog/2024/12/05/react-19", mode: "quotes" })
 // → 相关引用/摘要，带来源元数据
 ```
+
+### `research_search` — 网络研究验证工具（v0.4.1，默认关闭）
+
+仅限网页的研究工具：发现来源、获取证据、可选 LLM 验证。
+
+**默认关闭**：LLM 验证需设置 `PI_SEARCH_LLM_ENABLED=always`。
+
+```typescript
+// 默认：返回证据，状态为 [VERIFICATION DISABLED]
+research_search({ query: "React Server Components 是什么" })
+
+// 启用 LLM 后：返回 [VERIFICATION ENABLED] + 带引用的答案
+research_search({ query: "React Server Components 是什么", maxSources: 3 })
+
+// 显式控制验证
+research_search({ query: "React Server Components 是什么", verify: false })
+// → [VERIFICATION DISABLED]，仅返回证据
+```
+
+输出始终包含明确状态：
+- `[VERIFICATION ENABLED]` — LLM 验证答案（带引用）
+- `[VERIFICATION DISABLED]` — 仅证据，未使用 LLM
+- `[VERIFICATION FAILED: 原因]` — LLM 尝试但失败
+
+不读取本地文件。不进行查询重写。
 
 ## 自定义返回数量
 
@@ -144,12 +161,15 @@ Agent 会帮你编辑 `extensions/pi-search.ts`，改完两处数字后重启 pi
 ## 安全
 
 - **最小权限运行器**：子进程仅获得最小 env 白名单，不含敏感 token。
+- **显式安全策略**（v0.4.0）：命令配置、路径边界、网络策略、项目级临时目录。
 - **安全网页抓取**：所有 fetch 路径通过 `safeFetchText()`，内置 SSRF 防护。
 - **自动安装 opt-in**：默认 `never`。设置 `PI_SEARCH_AUTO_INSTALL=always` 启用。
 - **不可信边界**：所有网页内容明确标记为不可信证据。
 - **风险标记**：检测 prompt 注入短语并标记。
 
 这些安全控制保持轻量：`pi-search` 是搜索扩展，不是浏览器 Agent 或爬虫。
+
+详见 [安全策略文档](docs/security-policy.md)。
 
 ## 环境要求
 
@@ -171,7 +191,6 @@ mgrep login
 2. 创建 API Key → 导出：
 
 ```bash
-# ~/.zshrc
 export MXBAI_API_KEY="mxb_your_key_here"
 ```
 

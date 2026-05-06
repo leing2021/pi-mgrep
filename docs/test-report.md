@@ -27,7 +27,7 @@ Results:
 
 | Check | Result |
 |---|---|
-| Automated tests | ✅ 49/49 passed |
+| Automated tests | ✅ 135/135 passed |
 | npm dry-run package | ✅ 6 files, ~17 kB package, ~56 kB unpacked |
 | Runtime dependencies | ✅ none |
 | Extension load path | ✅ package manifest only |
@@ -165,6 +165,126 @@ Result:
 | Web content is marked `untrusted-web` | ✅ |
 | `web_search.count` is clamped | ✅ |
 
+### v0.4.0: Command Policy
+
+| Scenario | Result |
+|---|---|
+| Unknown profile throws `UNKNOWN_PROFILE` | ✅ |
+| `rg` profile has required fields | ✅ |
+| `mgrep-local` profile has required fields | ✅ |
+| `mgrep-web` has `network=true` | ✅ |
+| `installer` profile has required fields | ✅ |
+| `rg` profile excludes `MXBAI_API_KEY` | ✅ |
+| `mgrep-web` includes `MXBAI_API_KEY` but excludes others | ✅ |
+| `mgrep-web` excludes `OPENAI_API_KEY` | ✅ |
+| `installer` excludes all sensitive keys | ✅ |
+| `runPolicyCommand` rejects unknown profile | ✅ |
+| `runPolicyCommand` uses minimal env | ✅ |
+
+### v0.4.0: Path Policy
+
+| Scenario | Result |
+|---|---|
+| Cwd is allowed | ✅ |
+| Subdirectory of cwd is allowed | ✅ |
+| Relative `.` is allowed | ✅ |
+| `./src` is allowed | ✅ |
+| `../` traversal is rejected | ✅ |
+| Absolute outside-cwd paths are rejected | ✅ |
+| `/private`, `/var`, `/etc` are rejected | ✅ |
+| `.env` is rejected (even inside cwd) | ✅ |
+| `.ssh`, `.aws`, `.kube`, `.npmrc` are rejected | ✅ |
+| `id_rsa`, `id_ed25519`, `.pem`, `.key` are rejected | ✅ |
+| Outside-cwd opt-in allows non-sensitive paths | ✅ |
+| Sensitive paths remain rejected with opt-in | ✅ |
+
+### v0.4.0: Network Policy
+
+| Scenario | Result |
+|---|---|
+| `getNetworkPolicy` returns structured policy | ✅ |
+| Default enforces HTTPS | ✅ |
+| HTTP rejected by default | ✅ |
+| `allowedHosts` enforced | ✅ |
+| Redirect to localhost rejected | ✅ |
+| Redirect to `127.0.0.1` rejected | ✅ |
+| DNS private IP rejected | ✅ |
+| DNS metadata IP rejected | ✅ |
+| IPv6 loopback `::1` rejected | ✅ |
+| IPv6 ULA `fc00::`, `fd00::` rejected | ✅ |
+| IPv6 link-local `fe80::` rejected | ✅ |
+| IPv4-mapped `::ffff:127.*`, `::ffff:10.*` rejected | ✅ |
+| DDG fallback allowed hosts pass validation | ✅ |
+
+### v0.4.0: Project-Scoped Temp Dir
+
+| Scenario | Result |
+|---|---|
+| Same cwd returns consistent temp dir | ✅ |
+| Different cwd returns different temp dir | ✅ |
+| Path follows `/tmp/pi-search-empty-*` pattern | ✅ |
+| Dir is created if missing | ✅ |
+| Dir is empty after ensure | ✅ |
+
+### v0.4.0: Audit Details
+
+| Scenario | Result |
+|---|---|
+| `createAuditDetails` helper exists | ✅ |
+| Tool results include `sandboxMode` | ✅ |
+| Tool results reference `permissionProfile` | ✅ |
+| Extension does not hardcode `/tmp/mgrep-empty` | ✅ |
+| Security module provides temp dir helpers | ✅ |
+
+### v0.4.1: LLM Config
+
+| Scenario | Result |
+|---|---|
+| Default `enabled=never`, `llmUsed=false` | ✅ |
+| `always` requires provider + API key env | ✅ |
+| `ask` treated as disabled | ✅ |
+| API key value never exposed in config | ✅ |
+| Missing API key results in `llmUsed=false` | ✅ |
+
+### v0.4.1: Verification Status
+
+| Scenario | Result |
+|---|---|
+| Default returns `[VERIFICATION DISABLED]` | ✅ |
+| Error returns `[VERIFICATION FAILED: reason]` | ✅ |
+| LLM active returns `[VERIFICATION ENABLED]` | ✅ |
+
+### v0.4.1: Evidence Pack
+
+| Scenario | Result |
+|---|---|
+| `maxSources` clamps to 1-5 | ✅ |
+| `maxChars` clamps to 1000-12000 | ✅ |
+| Evidence pack has required structure | ✅ |
+| `addSourceToPack` adds sources correctly | ✅ |
+| Respects `maxSources` limit | ✅ |
+| Records fetch failures | ✅ |
+| `collectEvidence` returns pack and results | ✅ |
+| Fetch failures handled gracefully | ✅ |
+
+### v0.4.1: Verify Research Claim
+
+| Scenario | Result |
+|---|---|
+| Mock provider returns structured result | ✅ |
+| Timeout returns `[VERIFICATION FAILED: timeout]` | ✅ |
+
+### v0.4.1: Extension Contract (research_search)
+
+| Scenario | Result |
+|---|---|
+| Extension registers `research_search` tool | ✅ |
+| Description says web-only | ✅ |
+| Description says default-off | ✅ |
+| Schema includes `query`, `maxSources`, `maxChars`, `verify` | ✅ |
+| Does not use `mgrep -a` | ✅ |
+| Does not call local search or `validateSearchPath` | ✅ |
+
 ---
 
 ## Manual Functional Baseline
@@ -197,20 +317,20 @@ pi install npm:@leing2021/pi-search
 Local development install:
 
 ```bash
-pi install /Users/jasonle/code/pi-search
+pi install /path/to/pi-search
 ```
 
 One-off test:
 
 ```bash
-pi -e /Users/jasonle/code/pi-search
+pi -e /path/to/pi-search
 ```
 
 Do **not** also keep an old copied extension at:
 
 ```text
-~/.pi/agent/extensions/mgrep.ts
-~/.pi/agent/extensions/pi-search.ts
+<pi-config-dir>/agent/extensions/mgrep.ts
+<pi-config-dir>/agent/extensions/pi-search.ts
 <project>/.pi/extensions/mgrep.ts
 ```
 
@@ -220,6 +340,6 @@ Keeping both old local extension files and the package enabled can duplicate too
 
 ## Notes
 
-- `docs/` is local-only except this report.
-- `tests/` is local-only and excluded from commits/published package.
+- Public documentation included in the package: `README.md`, `README_CN.md`, `docs/security-policy.md`, `docs/test-report.md`.
+- Regression tests are committed to keep the reported automated test count reproducible.
 - The package remains intentionally small: search tools, safe single-page fetch, no browser agent, no crawler, no heavy sandbox dependency.

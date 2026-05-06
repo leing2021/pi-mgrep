@@ -25,7 +25,17 @@ import {
 	resolveRg,
 	resolveMgrep,
 	safeFetchText,
+	validateSearchPath,
+	ensureProjectScopedEmptyDir,
+	getProjectScopedTempDir,
 } from "../src/security.mjs";
+import {
+	getLlmConfig,
+	getResearchSearchStatus,
+	buildEvidencePack,
+	collectEvidence,
+	verifyResearchClaim,
+} from "../src/research.mjs";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -121,7 +131,7 @@ async function ddgFallback(query: string, n: number): Promise<string> {
 }
 
 function ensureEmptyDir() {
-	const dir = "/tmp/mgrep-empty";
+	const dir = ensureProjectScopedEmptyDir();
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
@@ -152,6 +162,22 @@ export default function searchExtension(pi: ExtensionAPI) {
 		}),
 		async execute(_id, params) {
 			const path = params.path || process.cwd();
+
+			// v0.4.0: validate search path against policy
+			const pathResult = validateSearchPath(path);
+			if (!pathResult.allowed) {
+				return {
+					content: [{ type: "text", text: `Path rejected: ${pathResult.deniedReason}. Path: ${path}` }],
+					details: {
+						query: params.query,
+						path,
+						pathPolicy: pathResult,
+						sandboxMode: "process-env-cwd-timeout",
+						autoInstallAttempted: false,
+					},
+				};
+			}
+
 			const useRg = looksLikeCode(params.query);
 
 			if (useRg) {
@@ -228,7 +254,7 @@ export default function searchExtension(pi: ExtensionAPI) {
 		}),
 		async execute(_id, params) {
 			const n = Math.min(10, Math.max(1, params.count ?? 5));
-			const args = ["search", "-w", "-c", "-m", String(n * 3), params.query, "/tmp/mgrep-empty"];
+			const args = ["search", "-w", "-c", "-m", String(n * 3), params.query, getProjectScopedTempDir()];
 			if (params.answer) args.push("-a");
 
 			const mgrep = await resolveMgrep();
@@ -387,6 +413,13 @@ export default function searchExtension(pi: ExtensionAPI) {
 				path = process.cwd();
 			}
 
+			// v0.4.0: validate search path against policy
+			const pathResult = validateSearchPath(path);
+			if (!pathResult.allowed) {
+				ctx.ui.notify(`Path rejected: ${pathResult.deniedReason}. Path: ${path}`, "warning");
+				return;
+			}
+
 			const useRg = looksLikeCode(query);
 			if (useRg) {
 				const rg = await resolveRg();
@@ -417,7 +450,7 @@ export default function searchExtension(pi: ExtensionAPI) {
 			const mgrep = await resolveMgrep();
 			let raw: string;
 			if (mgrep) {
-				raw = await run(mgrep, ["search", "-w", "-a", "-m", "5", args, "/tmp/mgrep-empty"], 30000);
+				raw = await run(mgrep, ["search", "-w", "-a", "-m", "5", args, getProjectScopedTempDir()], 30000);
 			} else {
 				raw = "Error: mgrep not found";
 			}
@@ -446,6 +479,110 @@ export default function searchExtension(pi: ExtensionAPI) {
 			} catch (err: any) {
 				ctx.ui.notify(`Error: ${err.message}`, "warning");
 			}
+		},
+	});
+
+	// ── Tool 4: research_search ──────────────────────────────
+
+	pi.registerTool({
+		name: "research_search",
+		label: "Research Search",
+		description:
+			"Web-only research tool that searches the web, fetches top sources, and optionally " +
+			"verifies claims with an LLM. Default-off: LLM verification requires explicit opt-in via " +
+			"PI_SEARCH_LLM_ENABLED=always. Use web_search for simple URL discovery, web_fetch for " +
+			"single-page reads, and search for local files.",
+		promptSnippet: "Search the web and verify a research question with cited evidence",
+		promptGuidelines: [
+			"Use 'research_search' for web-only verified research questions.",
+			"LLM verification is default-off; requires PI_SEARCH_LLM_ENABLED=always.",
+			"Returns explicit [VERIFICATION DISABLED], [VERIFICATION FAILED], or [VERIFICATION ENABLED] status.",
+			"Use 'web_search' for simple web result discovery.",
+			"Use 'search' for local file content.",
+		],
+		parameters: Type.Object({
+			query: Type.String({ description: "Research question to investigate on the web" }),
+			maxSources: Type.Optional(Type.Number({ description: "Max sources to fetch (1-5, default 3)", default: 3 })),
+			maxChars: Type.Optional(Type.Number({ description: "Max total evidence chars (1000-12000, default 6000)", default: 6000 })),
+			verify: Type.Optional(Type.Boolean({ description: "Run LLM verification if enabled (default true)", default: true })),
+		}),
+		async execute(_id, params) {
+			const maxSources = params.maxSources ?? 3;
+			const maxChars = params.maxChars ?? 6000;
+			const verify = params.verify ?? true;
+
+			// Step 1: Discover URLs via DuckDuckGo fallback
+			let discoveredUrls: string[] = [];
+			try {
+				const ddgResult = await ddgFallback(params.query, maxSources * 2);
+				// Extract URLs from DDG result
+				const urlPattern = /^\s*\d+\.\s.*\n\s+(https?:\/\/\S+)/gm;
+				let match: RegExpExecArray | null;
+				while ((match = urlPattern.exec(ddgResult)) !== null) {
+					discoveredUrls.push(match[1]);
+				}
+			} catch {
+				// DDG failed; continue with empty URLs
+			}
+
+			// Step 2: Collect evidence from discovered URLs
+			const { pack, fetchResults } = await collectEvidence(discoveredUrls, { maxSources, maxChars });
+
+			// Step 3: Verification status
+			let verificationResult;
+			if (verify) {
+				verificationResult = await verifyResearchClaim(params.query, pack.sources, {});
+			} else {
+				verificationResult = {
+					text: "[VERIFICATION DISABLED]",
+					verificationStatus: "disabled",
+					reason: "verify=false",
+					answer: null,
+					citations: [],
+					inputChars: 0,
+					outputChars: 0,
+				};
+			}
+
+			// Step 4: Build output
+			const evidenceLines = pack.sources
+				.map((s: any) => `[${s.id}] ${s.url}\n${s.snippet}`)
+				.join("\n\n");
+
+			const output = [
+				verificationResult.text,
+				"",
+				`Query: ${params.query}`,
+				`Sources: ${pack.sources.length}/${discoveredUrls.length} fetched`,
+				"",
+				verificationResult.answer ? `Answer: ${verificationResult.answer}` : "",
+				verificationResult.citations?.length
+					? `Citations:\n${verificationResult.citations.map((c: any, i: number) => `[${i + 1}] ${c.url || String(c)}`).join("\n")}`
+					: "",
+				"",
+				"--- Evidence ---",
+				evidenceLines,
+			].filter(Boolean).join("\n");
+
+			return {
+				content: [{ type: "text", text: output }],
+				details: {
+					tool: "research_search",
+					llmUsed: verificationResult.verificationStatus === "enabled",
+					provider: getLlmConfig().provider,
+					model: getLlmConfig().model,
+					inputChars: verificationResult.inputChars,
+					outputChars: verificationResult.outputChars,
+					sourcesDiscovered: discoveredUrls.length,
+					sourcesFetched: pack.sources.filter((s: any) => s.fetched).length,
+					riskFlags: pack.sources.flatMap((s: any) => s.riskFlags),
+					verificationStatus: verificationResult.verificationStatus,
+					citations: verificationResult.citations,
+					sandboxMode: "process-env-cwd-timeout",
+					network: true,
+					dataFlow: "web-search-fetch-sanitize-verify",
+				},
+			};
 		},
 	});
 }

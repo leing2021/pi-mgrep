@@ -17,7 +17,9 @@
  *   - sanitizeHtml(html)
  *   - safeFetchText(url, opts)
  *   - isPrivateIP(ip)
-
+ *   - getCommandPolicy(profile)
+ *   - runPolicyCommand(profile, args, opts)
+ *   - COMMAND_PROFILES
  *   - SENSITIVE_ENV_KEYS
  *
  * Test seam: _dnsLookup option on safeFetchText/validateUrl.
@@ -28,16 +30,76 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { platform, homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import https from "node:https";
 import http from "node:http";
 import { lookup as realDnsLookup } from "node:dns/promises";
 
 import { URL as NodeURL } from "node:url";
+import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 
 const execFileAsync = promisify(execFile);
+
+// ── Command policy ───────────────────────────────────────
+
+export const COMMAND_PROFILES = {
+	rg: {
+		permissionProfile: "process-env-cwd-timeout",
+		envProfile: "rg",
+		timeout: 15000,
+		maxBuffer: 1024 * 1024,
+		network: false,
+	},
+	"mgrep-local": {
+		permissionProfile: "process-env-cwd-timeout",
+		envProfile: "mgrep",
+		timeout: 30000,
+		maxBuffer: 1024 * 1024,
+		network: true,
+	},
+	"mgrep-web": {
+		permissionProfile: "process-env-cwd-timeout",
+		envProfile: "mgrep-web",
+		timeout: 30000,
+		maxBuffer: 1024 * 1024,
+		network: true,
+	},
+	installer: {
+		permissionProfile: "process-env-cwd-timeout",
+		envProfile: "installer",
+		timeout: 120000,
+		maxBuffer: 64 * 1024,
+		network: true,
+	},
+};
+
+export function getCommandPolicy(profile) {
+	if (!COMMAND_PROFILES[profile]) {
+		throw Object.assign(
+			new Error(`Unknown command profile: '${profile}'. Known: ${Object.keys(COMMAND_PROFILES).join(", ")}`),
+			{ code: "UNKNOWN_PROFILE" },
+		);
+	}
+	const base = COMMAND_PROFILES[profile];
+	// Resolve env at call time so current process.env is used
+	return {
+		...base,
+		env: getMinimalEnv(base.envProfile),
+	};
+}
+
+export async function runPolicyCommand(profile, args, options = {}) {
+	const policy = getCommandPolicy(profile);
+	return runCommand(args[0], args.slice(1), {
+		timeout: options.timeout ?? policy.timeout,
+		maxBuffer: options.maxBuffer ?? policy.maxBuffer,
+		env: policy.env,
+		cwd: options.cwd,
+	});
+}
 
 // ── Sensitive env keys that must NEVER be forwarded ──────
 
@@ -244,6 +306,149 @@ export function resolveMgrep() {
 	return mgrepPromise;
 }
 
+// ── Audit details ────────────────────────────────────────
+
+export function createAuditDetails(fields = {}) {
+	return {
+		sandboxMode: "process-env-cwd-timeout",
+		autoInstallAttempted: false,
+		...fields,
+	};
+}
+
+// ── Project-scoped temp dir ───────────────────────────────
+
+export function getProjectScopedTempDir(cwd = process.cwd()) {
+	const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
+	return `/tmp/pi-search-empty-${hash}`;
+}
+
+export function ensureProjectScopedEmptyDir(cwd = process.cwd()) {
+	const dir = getProjectScopedTempDir(cwd);
+	if (!existsSync(dir)) {
+		mkdirSync(dir, { recursive: true });
+	}
+	return dir;
+}
+
+// ── Path policy ─────────────────────────────────────────
+
+const SENSITIVE_PATH_SEGMENTS = [
+	".env",
+	".ssh",
+	".aws",
+	".gcloud",
+	".kube",
+	".npmrc",
+];
+
+const SENSITIVE_FILE_PATTERNS = [
+	/id_rsa(?:\.pub)?$/,
+	/id_ed25519(?:\.pub)?$/,
+	/id_ecdsa(?:\.pub)?$/,
+	/\.pem$/,
+	/\.key$/,
+];
+
+const SYSTEM_PATH_PREFIXES = [
+	"/etc",
+	"/private",
+	"/var",
+];
+
+export function getPathPolicy(options = {}) {
+	const root = options.root ?? process.cwd();
+	const outsideCwdAllowed =
+		options.outsideCwdAllowed ??
+		(process.env.PI_SEARCH_ALLOW_OUTSIDE_CWD === "always");
+	return {
+		root,
+		outsideCwdAllowed,
+	};
+}
+
+export function validateSearchPath(inputPath, options = {}) {
+	const { root, outsideCwdAllowed } = getPathPolicy(options);
+	const resolvedPath = resolve(root, inputPath);
+
+	// Check sensitive path segments
+	const parts = resolvedPath.split("/");
+	for (const seg of SENSITIVE_PATH_SEGMENTS) {
+		if (parts.includes(seg)) {
+			return {
+				allowed: false,
+				requestedPath: inputPath,
+				resolvedPath,
+				root,
+				outsideCwdAllowed,
+				deniedReason: "SENSITIVE_PATH",
+			};
+		}
+	}
+
+	// Check sensitive file patterns
+	const basename = parts[parts.length - 1] || "";
+	for (const pat of SENSITIVE_FILE_PATTERNS) {
+		if (pat.test(basename)) {
+			return {
+				allowed: false,
+				requestedPath: inputPath,
+				resolvedPath,
+				root,
+				outsideCwdAllowed,
+				deniedReason: "SENSITIVE_PATH",
+			};
+		}
+	}
+
+	// Check system path prefixes
+	for (const prefix of SYSTEM_PATH_PREFIXES) {
+		if (resolvedPath === prefix || resolvedPath.startsWith(prefix + "/")) {
+			return {
+				allowed: false,
+				requestedPath: inputPath,
+				resolvedPath,
+				root,
+				outsideCwdAllowed,
+				deniedReason: "PATH_OUTSIDE_CWD",
+			};
+		}
+	}
+
+	// Check cwd boundary
+	const isInsideCwd = resolvedPath === root || resolvedPath.startsWith(root + "/");
+	if (!isInsideCwd && !outsideCwdAllowed) {
+		return {
+			allowed: false,
+			requestedPath: inputPath,
+			resolvedPath,
+			root,
+			outsideCwdAllowed,
+			deniedReason: "PATH_OUTSIDE_CWD",
+		};
+	}
+
+	return {
+		allowed: true,
+		requestedPath: inputPath,
+		resolvedPath,
+		root,
+		outsideCwdAllowed,
+		deniedReason: null,
+	};
+}
+
+// ── Network policy ──────────────────────────────────────
+
+export function getNetworkPolicy(options = {}) {
+	return {
+		httpsOnly: options.httpsOnly ?? true,
+		allowedHosts: options.allowedHosts ?? null,
+		maxRedirects: options.maxRedirects ?? 3,
+		timeout: options.timeout ?? 10000,
+	};
+}
+
 // ── Safe Fetch ────────────────────────────────────────────
 
 const PRIVATE_IP_PATTERNS = [
@@ -292,6 +497,22 @@ const CONTENT_TYPE_ALLOWLIST = [
 const CONTENT_TYPE_TEXT_GUARD = /^text\//;
 
 export function isPrivateIP(ip) {
+	// IPv6 checks
+	if (ip === "::1" || ip === "::") return true;
+	if (ip.startsWith("fc") || ip.startsWith("fd")) return true; // ULA
+	if (ip.startsWith("fe80:")) return true; // link-local
+	if (ip.startsWith("ff")) return true; // multicast
+
+	// IPv4-mapped IPv6 (::ffff:x.x.x.x)
+	const v4Mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+	if (v4Mapped) {
+		return isPrivateIPv4(v4Mapped[1]);
+	}
+
+	return isPrivateIPv4(ip);
+}
+
+function isPrivateIPv4(ip) {
 	for (const { pattern } of PRIVATE_IP_PATTERNS) {
 		if (pattern.test(ip)) return true;
 	}
@@ -331,6 +552,21 @@ export async function validateUrl(urlStr, options = {}) {
 
 	if (BLOCKED_HOSTS.has(hostname)) {
 		throw Object.assign(new Error(`Hostname '${hostname}' is blocked.`), { code: "HOST_BLOCKED" });
+	}
+
+	// Check if hostname is a raw IP address — validate the IP itself
+	// When _dnsLookup seam is present, the caller controls DNS resolution;
+	// we still check the raw hostname IP but allow seam to override (for test seam).
+	if (isIP(hostname) && !dnsLookup) {
+		if (BLOCKED_IPS.has(hostname)) {
+			throw Object.assign(new Error(`IP '${hostname}' is blocked.`), { code: "IP_BLOCKED" });
+		}
+		if (isPrivateIP(hostname)) {
+			throw Object.assign(new Error(`Private IP '${hostname}' is blocked.`), { code: "PRIVATE_IP" });
+		}
+		if (METADATA_IPS.has(hostname)) {
+			throw Object.assign(new Error(`Metadata IP '${hostname}' is blocked.`), { code: "METADATA_IP" });
+		}
 	}
 
 	// DNS resolution — use seam if provided, otherwise real DNS
