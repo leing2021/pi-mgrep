@@ -9,7 +9,7 @@ Unified search extension for [Pi Coding Agent](https://github.com/badlogic/pi-mo
 Install as a Pi package:
 
 ```bash
-pi install npm:pi-search
+pi install npm:@leing2021/pi-search
 # Restart pi or run /reload — tools are ready.
 ```
 

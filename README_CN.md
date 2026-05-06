@@ -9,7 +9,7 @@
 作为 Pi package 安装：
 
 ```bash
-pi install npm:pi-search
+pi install npm:@leing2021/pi-search
 # 重启 pi 或执行 /reload — 工具即可使用。
 ```
 

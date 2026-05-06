@@ -28,7 +28,7 @@ Results:
 | Check | Result |
 |---|---|
 | Automated tests | ✅ 49/49 passed |
-| npm dry-run package | ✅ 6 files, 15.6 kB package, 51.0 kB unpacked |
+| npm dry-run package | ✅ 6 files, ~17 kB package, ~56 kB unpacked |
 | Runtime dependencies | ✅ none |
 | Extension load path | ✅ package manifest only |
 | Local/project conflict prevention | ✅ old `.pi/extensions/mgrep.ts` removed |
@@ -96,12 +96,12 @@ Result:
 
 | Scenario | Result |
 |---|---|
-| Package name is `pi-search` | ✅ |
+| Package name is `@leing2021/pi-search` | ✅ |
 | Repository URL points to `pi-search` | ✅ |
 | README title is `# pi-search` | ✅ |
 | README_CN title is `# pi-search` | ✅ |
-| README install command uses `pi install npm:pi-search` | ✅ |
-| README_CN install command uses `pi install npm:pi-search` | ✅ |
+| README install command uses `pi install npm:@leing2021/pi-search` | ✅ |
+| README_CN install command uses `pi install npm:@leing2021/pi-search` | ✅ |
 | Extension top comment mentions `pi-search` | ✅ |
 | Compatibility migration notes exist locally | ✅ |
 | `PI_SEARCH_AUTO_INSTALL` documented | ✅ |
@@ -191,7 +191,7 @@ The project is now maintained as a Pi package, not as a manually copied extensio
 Recommended install after publish:
 
 ```bash
-pi install npm:pi-search
+pi install npm:@leing2021/pi-search
 ```
 
 Local development install:
