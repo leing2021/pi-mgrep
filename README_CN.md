@@ -290,7 +290,7 @@ export MXBAI_API_KEY="mxb_your_key_here"
 | 降级 | DuckDuckGo 回退 | DDG | 1.3s |
 | 边界 | 6000 字符截断 | — | — |
 
-**135 项自动化测试全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
+**137 项自动化测试全通过。** 详情：[docs/test-report.md](docs/test-report.md)。
 
 ## License
 

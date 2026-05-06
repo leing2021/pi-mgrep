@@ -240,6 +240,26 @@ describe("research-search: verifyResearchClaim", () => {
 	});
 });
 
+// ── Web search fallback contract (static) ──────────────────
+
+describe("web-search: fallback contract", () => {
+	test("web_search documents answer fallback as URL-only when mgrep fails", () => {
+		const section = EXT.substring(
+			EXT.indexOf('name: "web_search"'),
+			EXT.indexOf('name: "web_search"') + 2500,
+		);
+		assert.match(section, /fallback.*URL/i, "web_search should document URL-only fallback for answer mode failures");
+	});
+
+	test("web_search fallback reason covers unavailable or failed mgrep", () => {
+		const section = EXT.substring(
+			EXT.indexOf('name: "web_search"'),
+			EXT.indexOf('name: "web_search"') + 3500,
+		);
+		assert.match(section, /mgrep unavailable or failed/i, "fallback reason should cover mgrep failures/quota, not only missing binary");
+	});
+});
+
 // ── Extension contract (static) ────────────────────────────
 
 describe("research-search: extension contract", () => {

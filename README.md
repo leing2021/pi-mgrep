@@ -292,7 +292,7 @@ See [Security Policy](docs/security-policy.md) for details.
 | DuckDuckGo fallback | Degrade | DDG | 1.3s |
 | 6000-char truncation | Edge | — | — |
 
-**135/135 automated tests passed.** Full details: [docs/test-report.md](docs/test-report.md).
+**137/137 automated tests passed.** Full details: [docs/test-report.md](docs/test-report.md).
 
 ## License
 

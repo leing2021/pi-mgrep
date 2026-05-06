@@ -27,8 +27,8 @@ Results:
 
 | Check | Result |
 |---|---|
-| Automated tests | ✅ 135/135 passed |
-| npm dry-run package | ✅ 6 files, ~17 kB package, ~56 kB unpacked |
+| Automated tests | ✅ 137/137 passed |
+| npm dry-run package | ✅ 8 files, ~29 kB package, ~96 kB unpacked |
 | Runtime dependencies | ✅ none |
 | Extension load path | ✅ package manifest only |
 | Local/project conflict prevention | ✅ old `.pi/extensions/mgrep.ts` removed |
@@ -45,27 +45,29 @@ Published package contents are intentionally small:
 |---|---|
 | `extensions/pi-search.ts` | Pi extension entrypoint |
 | `src/security.mjs` | Minimal command/fetch security helpers |
+| `src/research.mjs` | Default-off research search helper pipeline |
 | `package.json` | npm + Pi package manifest |
 | `README.md` | English usage docs |
 | `README_CN.md` | Chinese usage docs |
+| `docs/security-policy.md` | Public security policy |
 | `docs/test-report.md` | Public verification report |
 
 Dry-run result:
 
 | Metric | Value |
 |---|---:|
-| Package size | 15.6 kB |
-| Unpacked size | 51.0 kB |
-| Total files | 6 |
+| Package size | 29.1 kB |
+| Unpacked size | 96.1 kB |
+| Total files | 8 |
 
 ### Package Manifest Checks
 
 | Check | Result |
 |---|---|
-| `package.json.name === "pi-search"` | ✅ |
+| `package.json.name === "@leing2021/pi-search"` | ✅ |
 | `keywords` includes `pi-package` | ✅ |
 | `pi.extensions` points to `extensions/pi-search.ts` | ✅ |
-| `files` excludes local-only docs/tests | ✅ |
+| `files` excludes local-only docs/tests and includes public security/test docs | ✅ |
 | `peerDependencies` lists Pi-provided packages | ✅ |
 
 ---

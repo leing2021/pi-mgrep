@@ -239,18 +239,19 @@ export default function searchExtension(pi: ExtensionAPI) {
 		label: "Web Search",
 		description:
 			"Search the internet. Returns ranked URLs with relevance scores, " +
-			"or an AI-generated answer summary. Then use web_fetch to read specific pages. " +
-			"For local files, use 'search' instead.",
+			"or an AI-generated answer summary when mgrep answer mode is available. " +
+			"If mgrep is unavailable or fails, fallback returns DuckDuckGo URLs only. " +
+			"Then use web_fetch to read specific pages. For local files, use 'search' instead.",
 		promptSnippet: "Search the internet for information",
 		promptGuidelines: [
 			"Use web_search for internet information, 'search' for local files.",
-			"answer=true returns a concise summary instead of just URLs.",
+			"answer=true returns a concise summary only when mgrep answer mode succeeds; fallback returns URL results.",
 			"After getting URLs, use web_fetch to read the best match in detail.",
 		],
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query in natural language" }),
 			count: Type.Optional(Type.Number({ description: "Max results (default 5)", default: 5 })),
-			answer: Type.Optional(Type.Boolean({ description: "Return an AI-generated answer summary (default false)" })),
+			answer: Type.Optional(Type.Boolean({ description: "Return an AI-generated answer summary when available; fallback is URL-only (default false)" })),
 		}),
 		async execute(_id, params) {
 			const n = Math.min(10, Math.max(1, params.count ?? 5));
@@ -292,7 +293,7 @@ export default function searchExtension(pi: ExtensionAPI) {
 				details: {
 					query: params.query,
 					engine: "ddg-fallback",
-					reason: "mgrep unavailable",
+					reason: "mgrep unavailable or failed",
 					sandboxMode: "process-env-cwd-timeout",
 					network: true,
 					autoInstallAttempted: false,
