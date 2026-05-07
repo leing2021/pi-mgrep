@@ -1,13 +1,19 @@
 {
   "name": "@leing2021/pi-search",
-  "version": "0.5.0",
-  "description": "Unified search extension for Pi Coding Agent — ripgrep code search + mgrep semantic search + DuckDuckGo fallback. Least-privilege sandbox, safe web retrieval, token-aware output.",
+  "version": "0.6.0",
+  "type": "module",
+  "description": "Minimal Secure Evidence Gateway for Pi Coding Agent — search, web_search, web_fetch, research_search. Task-aware provider routing, quota fallback, dual-LLM research, 4-layer abuse prevention.",
   "keywords": [
     "pi",
     "pi-package",
     "pi-extension",
     "search",
-    "mgrep",
+    "web-search",
+    "brave",
+    "tavily",
+    "searxng",
+    "evidence-gateway",
+    "security",
     "ripgrep",
     "web-search",
     "duckduckgo",
@@ -28,7 +34,6 @@
     "src/",
     "README.md",
     "README_CN.md",
-    "docs/security-policy.md",
     "docs/test-report.md"
   ],
   "peerDependencies": {

@@ -1,0 +1,276 @@
+/**
+ * pi-search — Tool handlers and definitions (testable core)
+ *
+ * Separated from extension entry point for testability.
+ * No Pi-specific imports; no TypeBox dependency.
+ */
+
+import {
+	runCommand,
+	safeFetchText,
+	resolveSafePath,
+} from "../src/security.ts";
+import {
+	webSearch,
+	extractFirecrawl,
+	type SearchResult,
+} from "../src/providers.ts";
+import {
+	researchSearch,
+	type ResearchReport,
+} from "../src/research.ts";
+import {
+	detectPromptInjection,
+	wrapUntrusted,
+} from "../src/text.ts";
+
+const MAX_CONTENT = 6000;
+const MAX_RESULTS = 10;
+
+type LocalSearchResult = {
+	title: string;
+	path: string;
+	line?: string;
+	column?: string;
+	snippet: string;
+};
+
+function trunc(text: string, max = MAX_CONTENT): string {
+	return text.length <= max ? text : text.slice(0, max) + `\n... (truncated, ${text.length} total chars)`;
+}
+
+function looksLikeCode(q: string): boolean {
+	const hasSpace = q.includes(" ");
+	if (hasSpace) return /[{}()\[\]=<>:;%@#]/.test(q);
+	return /[A-Z][a-z]+[A-Z]|_\w{2,}|\w+\.\w{2,}|\/\w+|[{}()\[\]=<>:;${}%@#]/.test(q) || q.length <= 20;
+}
+
+export async function handleSearch(
+	params: { query: string; path?: string; engine?: string },
+	deps?: { runCommand?: typeof runCommand; resolveSafePath?: (p: string, opts?: { cwd?: string; env?: Record<string, string | undefined> }) => string },
+): Promise<{ results: LocalSearchResult[]; details: Record<string, unknown>; error?: { message: string } }> {
+	const searchPath = params.path ?? ".";
+	const engine = params.engine ?? "auto";
+	const run = deps?.runCommand ?? runCommand;
+	const resolvePath = deps?.resolveSafePath ?? resolveSafePath;
+
+	try {
+		resolvePath(searchPath);
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		return {
+			results: [],
+			details: { engine: "blocked", query: params.query, path: searchPath, sandboxMode: "process-env-cwd-timeout", pathBlocked: true },
+			error: { message: msg },
+		};
+	}
+
+	const isCode = looksLikeCode(params.query);
+	let rgOutput = "";
+	let usedEngine = "rg";
+
+	try {
+		if (isCode || engine === "rg") {
+			const { stdout } = await run("rg", [
+				"--max-count", "20",
+				"--no-heading",
+				"--column",
+				"--color", "never",
+				"--", params.query,
+				searchPath,
+			], {
+				timeout: 10_000,
+			});
+			rgOutput = stdout;
+		} else {
+			const tokens = params.query.split(/\s+/).filter(Boolean).slice(0, 5);
+			const pattern = tokens.join("|");
+			const { stdout } = await run("rg", [
+				"--max-count", "20",
+				"--no-heading",
+				"--column",
+				"--color", "never",
+				"-i",
+				"--", pattern,
+				searchPath,
+			], {
+				timeout: 10_000,
+			});
+			rgOutput = stdout;
+			usedEngine = "rg-multi-token";
+		}
+	} catch {
+		usedEngine = isCode ? "rg" : "rg-multi-token";
+	}
+
+	const results: LocalSearchResult[] = rgOutput
+		.split("\n")
+		.filter(Boolean)
+		.slice(0, MAX_RESULTS)
+		.map((line) => {
+			const parts = line.split(":", 4);
+			const filePath = parts[0] ?? "";
+			return {
+				title: filePath,
+				path: filePath,
+				line: parts[1],
+				column: parts[2],
+				snippet: trunc((parts.slice(3).join(":") ?? "").trim()),
+			};
+		});
+
+	return {
+		results,
+		details: {
+			engine: usedEngine,
+			query: params.query,
+			path: searchPath,
+			sandboxMode: "process-env-cwd-timeout",
+			resultCount: results.length,
+			apiKeyExposed: false,
+		},
+	};
+}
+
+export async function handleWebSearch(
+	params: { query: string; provider?: string; count?: number },
+	deps?: { webSearch?: typeof webSearch },
+): Promise<{ provider: string; results: SearchResult[]; details: Record<string, unknown> }> {
+	const searchFn = deps?.webSearch ?? webSearch;
+	const result = await searchFn({
+		query: params.query,
+		provider: params.provider ?? "auto",
+		env: process.env as Record<string, string | undefined>,
+	});
+
+	if (!result.ok) {
+		return {
+			provider: "none",
+			results: [],
+			details: {
+				provider: "none",
+				providersAttempted: (result.error?.details as Record<string, unknown>)?.providersAttempted ?? [],
+				querySentTo: (result.error?.details as Record<string, unknown>)?.querySentTo ?? [],
+				fallbackReasons: (result.error?.details as Record<string, unknown>)?.fallbackReasons ?? [],
+				error: result.error?.message ?? "All providers failed",
+				apiKeyExposed: false,
+			},
+		};
+	}
+
+	const count = params.count ?? MAX_RESULTS;
+	const results = result.data.slice(0, count);
+
+	return {
+		provider: result.provider,
+		results,
+		details: {
+			provider: result.provider,
+			providersAttempted: (result.details as Record<string, unknown>)?.providersAttempted ?? [result.provider],
+			querySentTo: (result.details as Record<string, unknown>)?.querySentTo ?? [],
+			fallbackReasons: (result.details as Record<string, unknown>)?.fallbackReasons ?? [],
+			resultCount: results.length,
+			apiKeyExposed: false,
+		},
+	};
+}
+
+export async function handleWebFetch(
+	params: { url: string; extract?: boolean },
+	deps?: {
+		fetch?: (url: string) => Promise<{ text: string; riskFlags: string[] }>;
+		firecrawl?: ((url: string) => Promise<{ content: string; markdown?: string }>) | null;
+	},
+): Promise<{ content: string; trust: string; details: Record<string, unknown> }> {
+	const fetchFn = deps?.fetch ?? safeFetchText;
+	const hasFcKey = Boolean(process.env.FIRECRAWL_API_KEY);
+	const firecrawlFn = deps?.firecrawl !== undefined
+		? deps.firecrawl
+		: hasFcKey
+			? async (url: string) => {
+				const r = await extractFirecrawl({ apiKey: process.env.FIRECRAWL_API_KEY! }, url, "");
+				return r ?? { content: "" };
+			}
+			: null;
+
+	const allRiskFlags: string[] = [];
+	let content = "";
+	let extractor = "local";
+
+	if (params.extract && firecrawlFn) {
+		try {
+			const fcResult = await firecrawlFn(params.url);
+			content = fcResult.content || fcResult.markdown || "";
+			extractor = "firecrawl";
+		} catch {
+			return {
+				content: `[FetchError: failed to fetch ${params.url}]`,
+				trust: "untrusted",
+				details: { extractor: "failed", url: params.url, trust: "untrusted", riskFlags: allRiskFlags, apiKeyExposed: false },
+			};
+		}
+	} else {
+		try {
+			const result = await fetchFn(params.url);
+			if (typeof result === "string") {
+				content = result;
+			} else {
+				content = result.text ?? "";
+				if (result.riskFlags) allRiskFlags.push(...result.riskFlags);
+			}
+		} catch {
+			if (firecrawlFn) {
+				try {
+					const fcResult = await firecrawlFn(params.url);
+					content = fcResult.content || fcResult.markdown || "";
+					extractor = "firecrawl";
+				} catch {
+					return {
+						content: `[FetchError: failed to fetch ${params.url}]`,
+						trust: "untrusted",
+						details: { extractor: "failed", url: params.url, trust: "untrusted", riskFlags: allRiskFlags, apiKeyExposed: false },
+					};
+				}
+			} else {
+				return {
+					content: `[FetchError: failed to fetch ${params.url}]`,
+					trust: "untrusted",
+					details: { extractor: "failed", url: params.url, trust: "untrusted", riskFlags: allRiskFlags, apiKeyExposed: false },
+				};
+			}
+		}
+	}
+
+	const injectionFlags = detectPromptInjection(content);
+	allRiskFlags.push(...injectionFlags);
+
+	const wrapped = wrapUntrusted(content);
+
+	return {
+		content: trunc(wrapped),
+		trust: "untrusted",
+		details: {
+			extractor,
+			url: params.url,
+			trust: "untrusted",
+			riskFlags: allRiskFlags,
+			contentLength: content.length,
+			apiKeyExposed: false,
+		},
+	};
+}
+
+export async function handleResearchSearch(
+	params: { query: string; mode?: "basic" | "deep"; maxSources?: number },
+	deps?: { researchSearch?: typeof researchSearch },
+): Promise<ResearchReport> {
+	const searchFn = deps?.researchSearch ?? researchSearch;
+	return searchFn({
+		query: params.query,
+		mode: params.mode ?? "basic",
+		maxSources: params.maxSources ?? 5,
+		env: process.env as Record<string, string | undefined>,
+	});
+}
+
+export const TOOL_NAMES = ["search", "web_search", "web_fetch", "research_search"] as const;
