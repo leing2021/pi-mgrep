@@ -259,7 +259,7 @@ function decodeResponse(bytes: Uint8Array, encoding: string | null, maxBytes: nu
       }
       chunks.push(chunk);
     });
-    stream.on('error', reject);
+    stream.on('error', () => resolve(buffer)); // proxy may have already decompressed
     stream.on('end', () => resolve(Buffer.concat(chunks)));
     stream.end(buffer);
   });

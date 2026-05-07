@@ -299,7 +299,7 @@ export async function webSearch(options: {
       id: 'brave',
       url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(options.query)}&count=10`,
       fetchOptions: () => ({
-        headers: { 'X-Subscription-Token': braveApiKey },
+        headers: { 'X-Subscription-Token': braveApiKey, 'Accept': 'application/json' },
       }),
       classifyError: (s, b, j) => classifyResponseError(s, b, j),
       recordQuota: (r) => recordProviderQuota('brave', r),

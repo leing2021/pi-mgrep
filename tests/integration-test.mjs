@@ -97,6 +97,13 @@ await run('web_search', 'DuckDuckGo 指定搜索（真实 HTML）', async () => 
   assert(res.provider === 'duckduckgo', `provider=${res.provider}`);
   assert(res.results.length > 0, 'no duckduckgo results');
 });
+await run('web_search', 'Brave 指定搜索（若已配置）', async () => {
+  const cfg = detectProviderConfig(process.env);
+  if (!cfg.hasBrave) return; // skip if no key
+  const res = await handleWebSearch({ query: 'TypeScript handbook', provider: 'brave', count: 3 });
+  assert(res.provider === 'brave', `provider=${res.provider}`);
+  assert(res.results.length > 0, `no brave results, details=${JSON.stringify(res.details)}`);
+});
 await run('web_search', '未知 provider 优雅失败', async () => {
   const res = await handleWebSearch({ query: 'test query', provider: 'nonexistent-provider' });
   assert(res.provider === 'none', `expected none got ${res.provider}`);
