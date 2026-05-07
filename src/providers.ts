@@ -228,14 +228,18 @@ function redactProviderUrl(url: string): string {
 }
 
 function redactSensitiveText(text: string): string {
-  return text.replace(/(https?:\/\/[^\s]+)/gi, (url) => redactProviderUrl(url));
+  // Redact API keys from URLs
+  let result = text.replace(/(https?:\/\/[^\s]+)/gi, (url) => redactProviderUrl(url));
+  // Redact API keys from JSON body values: "api_key":"<value>"
+  result = result.replace(/("(?:api[_-]?key|token|secret|password)"\s*:\s*")[^"]*("\s*[,\}\]])/gi, '$1REDACTED$2');
+  return result;
 }
 
 export async function webSearch(options: {
   query: string;
   provider?: string;
   env?: Record<string, string | undefined>;
-  fetch?: (url: string) => Promise<{ ok: boolean; status?: number; content?: string }>;
+  fetch?: (url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{ ok: boolean; status?: number; content?: string }>;
 }): Promise<
   | { ok: true; provider: string; data: SearchResult[]; details: Record<string, unknown> }
   | { ok: false; error: { errorClass: string; message: string; details: Record<string, unknown> }; userText: string }
@@ -249,6 +253,7 @@ export async function webSearch(options: {
   interface ProviderEntry {
     id: string;
     url: string | null;
+    fetchOptions?: () => { method?: string; headers?: Record<string, string>; body?: string };
     classifyError?: (s: number, b: string, j: boolean) => string;
     recordQuota?: (r: string) => void;
   }
@@ -264,20 +269,31 @@ export async function webSearch(options: {
   }
 
   // Brave: third-party, fallback after SearXNG
+  // Uses X-Subscription-Token header per Brave Search API spec
   if (cfg.hasBrave && (provider === 'auto' || provider === 'brave')) {
+    const braveApiKey = options.env?.BRAVE_SEARCH_API_KEY ?? '';
     providers.push({
       id: 'brave',
       url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(options.query)}&count=10`,
+      fetchOptions: () => ({
+        headers: { 'X-Subscription-Token': braveApiKey },
+      }),
       classifyError: (s, b, j) => classifyResponseError(s, b, j),
       recordQuota: (r) => recordProviderQuota('brave', r),
     });
   }
 
-  // Tavily: research-focused, only in auto mode
+  // Tavily: research-focused, uses POST JSON body per Tavily API spec
   if (cfg.hasTavily && (provider === 'auto' || provider === 'tavily')) {
+    const tavilyApiKey = options.env?.TAVILY_API_KEY ?? '';
     providers.push({
       id: 'tavily',
-      url: `https://api.tavily.com/search?api_key=${options.env?.TAVILY_API_KEY}&query=${encodeURIComponent(options.query)}&max_results=10`,
+      url: 'https://api.tavily.com/search',
+      fetchOptions: () => ({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: tavilyApiKey, query: options.query, max_results: 10 }),
+      }),
       classifyError: (s, b, j) => classifyResponseError(s, b, j),
       recordQuota: (r) => recordProviderQuota('tavily', r),
     });
@@ -321,8 +337,10 @@ export async function webSearch(options: {
       let rawResponse: string;
 
       if (prov.url) {
-        querySentTo.push(redactProviderUrl(prov.url));
-        const res = await actualFetch(prov.url);
+        const redactedUrl = prov.id === 'tavily' ? prov.url : redactProviderUrl(prov.url);
+        querySentTo.push(redactedUrl);
+        const fetchOpts = prov.fetchOptions?.();
+        const res = await actualFetch(prov.url, fetchOpts);
         if (!res.ok) {
           const status = res.status ?? 500;
           const bodyText = (res.content ?? '').toString().slice(0, 200);
@@ -392,15 +410,19 @@ export async function webSearch(options: {
   };
 }
 
-async function defaultFetch(url: string): Promise<{ ok: boolean; status?: number; content?: string }> {
+async function defaultFetch(url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ ok: boolean; status?: number; content?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (compatible; pi-search/1.0)',
+      'Accept': 'application/json, text/html, */*',
+      ...(opts?.headers ?? {}),
+    };
     const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; pi-search/1.0)',
-        'Accept': 'application/json, text/html, */*',
-      },
+      method: opts?.method ?? 'GET',
+      headers,
+      body: opts?.body,
       signal: controller.signal,
       redirect: 'manual',
     });

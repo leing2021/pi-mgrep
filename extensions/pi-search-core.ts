@@ -175,22 +175,57 @@ export async function handleWebSearch(
 	};
 }
 
+async function defaultFirecrawlFetch(url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ ok: boolean; status?: number; content?: string }> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 30_000);
+	try {
+		const res = await fetch(url, {
+			method: opts?.method ?? 'POST',
+			headers: opts?.headers,
+			body: opts?.body,
+			signal: controller.signal,
+			redirect: 'manual',
+		});
+		clearTimeout(timer);
+		const body = await res.text();
+		return { ok: res.ok, status: res.status, content: body };
+	} catch (err) {
+		clearTimeout(timer);
+		throw err;
+	}
+}
+
 export async function handleWebFetch(
 	params: { url: string; extract?: boolean },
 	deps?: {
 		fetch?: (url: string) => Promise<{ text: string; riskFlags: string[] }>;
 		firecrawl?: ((url: string) => Promise<{ content: string; markdown?: string }>) | null;
+		firecrawlFetch?: (url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{ ok: boolean; status?: number; content?: string }>;
+		firecrawlApiKey?: string;
 	},
 ): Promise<{ content: string; trust: string; details: Record<string, unknown> }> {
 	const fetchFn = deps?.fetch ?? safeFetchText;
-	const hasFcKey = Boolean(process.env.FIRECRAWL_API_KEY);
+	const hasFcKey = Boolean(deps?.firecrawlApiKey ?? process.env.FIRECRAWL_API_KEY);
+	const fcApiKey = deps?.firecrawlApiKey ?? process.env.FIRECRAWL_API_KEY ?? '';
+	const fcFetch = deps?.firecrawlFetch ?? defaultFirecrawlFetch;
+
 	const firecrawlFn = deps?.firecrawl !== undefined
 		? deps.firecrawl
 		: hasFcKey
 			? async (url: string) => {
-				const r = await extractFirecrawl({ apiKey: process.env.FIRECRAWL_API_KEY! }, url, "");
-				return r ?? { content: "" };
-			}
+					const response = await fcFetch('https://api.firecrawl.dev/v1/scrape', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${fcApiKey}`,
+						},
+						body: JSON.stringify({ url }),
+					});
+					if (!response.ok) {
+						throw new Error(`Firecrawl API error: HTTP ${response.status ?? 'unknown'}`);
+					}
+					return extractFirecrawl({ apiKey: fcApiKey }, url, response.content ?? '');
+				}
 			: null;
 
 	const allRiskFlags: string[] = [];

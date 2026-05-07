@@ -191,35 +191,42 @@ test('webSearch defaults to auto routing when provider omitted', async () => {
   assert.equal(result.provider, 'brave');
 });
 
-test('webSearch redacts provider API keys from querySentTo details', async () => {
+test('webSearch tavily does not expose API key in querySentTo or details', async () => {
   resetAllCooldowns();
+  let capturedBody = null;
   const result = await webSearch({
     query: 'test',
     provider: 'tavily',
     env: { TAVILY_API_KEY: 'test-tavily-redacted-value' },
-    fetch: async (url) => {
-      assert.ok(url.includes('test-tavily-redacted-value'));
+    fetch: async (url, opts) => {
+      capturedBody = opts?.body ?? null;
       return makeJsonResponse({ results: [{ title: 'Tavily result', url: 'https://tavily.example', snippet: 'test' }] });
     },
   });
   assert.equal(result.provider, 'tavily');
+  // API key is in POST body, not URL
+  assert.ok(capturedBody && capturedBody.includes('test-tavily-redacted-value'), 'API key should be in POST body');
+  // querySentTo and details should NOT contain the raw key
   assert.ok(!JSON.stringify(result.details).includes('test-tavily-redacted-value'));
-  assert.ok(JSON.stringify(result.details.querySentTo).includes('REDACTED'));
+  // URL in querySentTo is clean
+  for (const u of (result.details.querySentTo ?? [])) {
+    assert.ok(!u.includes('test-tavily-redacted-value'), `querySentTo URL must not contain key: ${u}`);
+  }
 });
 
-test('webSearch redacts provider API keys from failure details', async () => {
+test('webSearch tavily does not expose API key in failure details', async () => {
   resetAllCooldowns();
   const result = await webSearch({
     query: 'test',
     provider: 'tavily',
     env: { TAVILY_API_KEY: 'test-tavily-redacted-value' },
-    fetch: async (url) => {
-      throw new Error(`failed URL: ${url}`);
+    fetch: async (url, opts) => {
+      throw new Error(`failed URL: ${url} body: ${opts?.body ?? 'none'}`);
     },
   });
   assert.equal(result.ok, false);
+  // Error details must not contain raw API key
   assert.ok(!JSON.stringify(result.error.details).includes('test-tavily-redacted-value'));
-  assert.ok(JSON.stringify(result.error.details).includes('REDACTED'));
 });
 
 test('searchBrave calls correct endpoint and maps response', async () => {
@@ -323,4 +330,83 @@ test('webSearch records all fallbackReasons and querySentTo in details', async (
   assert.equal(result.provider, 'duckduckgo');
   assert.equal(result.details.providersAttempted.length, 1);
   assert.equal(result.details.querySentTo.length, 1);
+});
+
+// ============================================================
+// BUG 1: Brave provider must send X-Subscription-Token header
+// ============================================================
+
+test('webSearch brave sends X-Subscription-Token header', async () => {
+  resetAllCooldowns();
+  let capturedHeaders = {};
+  const result = await webSearch({
+    query: 'test brave header',
+    provider: 'brave',
+    env: { BRAVE_SEARCH_API_KEY: 'test-brave-token-123' },
+    fetch: async (url, opts) => {
+      capturedHeaders = opts?.headers ?? {};
+      return makeJsonResponse({ web: { results: [{ title: 'Brave Header Test', url: 'https://brave.example', description: 'test' }] } });
+    },
+  });
+  assert.equal(result.provider, 'brave');
+  assert.equal(capturedHeaders['X-Subscription-Token'], 'test-brave-token-123');
+  // API key must NOT appear in URL
+  assert.ok(!capturedHeaders['url']?.includes('test-brave-token-123'));
+  // querySentTo should not contain the key
+  const sentUrls = result.details.querySentTo ?? [];
+  for (const u of sentUrls) {
+    assert.ok(!u.includes('test-brave-token-123'), `URL should not contain API key: ${u}`);
+  }
+});
+
+// ============================================================
+// BUG 2: Tavily provider must use POST JSON body, not GET with api_key in URL
+// ============================================================
+
+test('webSearch tavily uses POST with JSON body, API key not in URL', async () => {
+  resetAllCooldowns();
+  let capturedMethod = '';
+  let capturedBody = null;
+  let capturedHeaders = {};
+  let capturedUrl = '';
+  const result = await webSearch({
+    query: 'test tavily post',
+    provider: 'tavily',
+    env: { TAVILY_API_KEY: 'test-tavily-key-456' },
+    fetch: async (url, opts) => {
+      capturedUrl = url;
+      capturedMethod = String(opts?.method ?? 'GET');
+      capturedHeaders = opts?.headers ?? {};
+      capturedBody = opts?.body ? JSON.parse(String(opts.body)) : null;
+      return makeJsonResponse({ results: [{ title: 'Tavily POST Test', url: 'https://tavily.example', content: 'test' }] });
+    },
+  });
+  assert.equal(result.provider, 'tavily');
+  assert.equal(capturedMethod, 'POST');
+  assert.equal(capturedHeaders['Content-Type'], 'application/json');
+  // API key in body, not URL
+  assert.equal(capturedBody?.api_key, 'test-tavily-key-456');
+  assert.equal(capturedBody?.query, 'test tavily post');
+  assert.ok(!capturedUrl.includes('test-tavily-key-456'), 'URL must not contain API key');
+  // querySentTo should not contain the key
+  const sentUrls = result.details.querySentTo ?? [];
+  for (const u of sentUrls) {
+    assert.ok(!u.includes('test-tavily-key-456'), `querySentTo must not contain API key: ${u}`);
+  }
+});
+
+test('webSearch tavily POST failure still classifies auth error correctly', async () => {
+  resetAllCooldowns();
+  const result = await webSearch({
+    query: 'test',
+    provider: 'tavily',
+    env: { TAVILY_API_KEY: 'bad-key' },
+    fetch: async () => {
+      return { ok: false, status: 401, content: JSON.stringify({ error: 'Invalid API key' }) };
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.errorClass, 'AllProvidersFailedError');
+  const reasons = result.error.details.fallbackReasons ?? [];
+  assert.ok(reasons.some(r => r.reason.includes('auth')), `Expected auth reason, got: ${JSON.stringify(reasons)}`);
 });

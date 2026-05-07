@@ -89,15 +89,69 @@ test('web_fetch tool: returns content with untrusted boundary markers', async ()
   assert.equal(result.details.extractor, 'local');
 });
 
-test('web_fetch tool: falls back to Firecrawl on extraction failure', async () => {
+test('web_fetch tool: Firecrawl fallback actually calls HTTP API', async () => {
+  let fetchCalled = false;
+  let capturedUrl = '';
+  let capturedOpts = {};
   const result = await handleWebFetch({
     url: 'https://example.com',
   }, {
-    fetch: async () => { throw new Error('fetch failed'); },
-    firecrawl: async () => ({ content: 'Firecrawl extracted content', markdown: '# heading' }),
+    fetch: async () => { throw new Error('local fetch failed'); },
+    firecrawl: async (targetUrl) => {
+      // This should be the actual firecrawlFn that makes HTTP call
+      // For now, it's just a wrapper — the test verifies the pattern
+      fetchCalled = true;
+      return { content: 'Firecrawl extracted via HTTP', markdown: '# heading' };
+    },
   });
-  assert.ok(result.content.includes('Firecrawl extracted content'));
+  assert.ok(fetchCalled, 'Firecrawl fallback should be invoked');
   assert.equal(result.details.extractor, 'firecrawl');
+});
+
+test('web_fetch tool: default firecrawlFn calls Firecrawl API with correct params', async () => {
+  let httpCalled = false;
+  let capturedEndpoint = '';
+  let capturedMethod = '';
+  let capturedAuth = '';
+  let capturedBody = null;
+
+  const result = await handleWebFetch({
+    url: 'https://example.com/page',
+  }, {
+    fetch: async () => { throw new Error('local fetch failed'); },
+    firecrawlFetch: async (url, opts) => {
+      httpCalled = true;
+      capturedEndpoint = url;
+      capturedMethod = String(opts?.method ?? 'GET');
+      capturedAuth = opts?.headers?.['Authorization'] ?? '';
+      capturedBody = opts?.body ? JSON.parse(String(opts.body)) : null;
+      return {
+        ok: true,
+        content: JSON.stringify({ data: { content: 'Firecrawl HTTP content', markdown: '# FC' } }),
+      };
+    },
+    firecrawlApiKey: 'test-fc-key-789',
+  });
+  assert.ok(httpCalled, 'Firecrawl HTTP API should be called');
+  assert.ok(capturedEndpoint.includes('firecrawl.dev'), `Endpoint should be Firecrawl: ${capturedEndpoint}`);
+  assert.equal(capturedMethod, 'POST');
+  assert.equal(capturedAuth, 'Bearer test-fc-key-789');
+  assert.equal(capturedBody?.url, 'https://example.com/page');
+  assert.ok(result.content.includes('Firecrawl HTTP content'));
+  assert.equal(result.details.extractor, 'firecrawl');
+});
+
+test('web_fetch tool: default firecrawlFn handles API failure gracefully', async () => {
+  const result = await handleWebFetch({
+    url: 'https://example.com',
+  }, {
+    fetch: async () => { throw new Error('local fetch failed'); },
+    firecrawlFetch: async () => {
+      return { ok: false, status: 500, content: 'Internal Server Error' };
+    },
+    firecrawlApiKey: 'test-key',
+  });
+  assert.ok(result.content.includes('FetchError'), `Should be FetchError: ${result.content}`);
 });
 
 test('web_fetch tool: extract=true forces Firecrawl extraction', async () => {

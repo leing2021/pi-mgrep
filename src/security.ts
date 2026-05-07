@@ -188,7 +188,7 @@ export async function validateUrl(rawUrl: string, options: {
   if (BLOCKED_HOSTS.has(host) && !isSearxngExactOrigin) throw new PiSearchError('NetworkPolicyError', 'Blocked hostname');
 
   const ips: string[] = [];
-  if (isIP(host)) {
+  if (isIP(host) || isIP(host.replace(/^\[|\]$/g, ''))) {
     ips.push(host.replace(/^\[|\]$/g, ''));
   } else {
     try {
@@ -199,8 +199,10 @@ export async function validateUrl(rawUrl: string, options: {
     }
   }
 
+  const hasProxy = Boolean(env.HTTPS_PROXY || env.HTTP_PROXY || env.ALL_PROXY);
+
   for (const ip of ips) {
-    if (isPrivateIp(ip) && !isSearxngExactOrigin) {
+    if (!hasProxy && isPrivateIp(ip) && !isSearxngExactOrigin) {
       throw new PiSearchError('NetworkPolicyError', 'Private network target is blocked', { host, ip });
     }
   }

@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一个为 [Pi Coding Agent](https://github.com/badlogic/pi-mono) 设计的小型安全证据网关。
+一个为 [Pi Coding Agent](https://github.com/badlogic/pi-mono) 设计的最小化安全证据网关。
 
 `pi-search` 为 Agent 提供四个专注的工具：
 

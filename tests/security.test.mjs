@@ -58,13 +58,14 @@ test('validateUrl rejects URL credentials', async () => {
 });
 
 test('validateUrl rejects localhost and private networks', async () => {
-  await assert.rejects(() => validateUrl('https://localhost'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://127.0.0.1'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://10.0.0.1'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://192.168.1.1'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://10.255.0.10'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://169.254.169.254'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://[::1]'), /NetworkPolicyError/);
+  const env = {};
+  await assert.rejects(() => validateUrl('https://localhost', { env }), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://127.0.0.1', { env }), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://10.0.0.1', { env }), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://192.168.1.1', { env }), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://10.255.0.10', { env }), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://169.254.169.254', { env }), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://[::1]', { env }), /NetworkPolicyError/);
 });
 
 test('validateUrl allows exact private SearXNG origin only with explicit opt-in', async () => {
@@ -163,4 +164,52 @@ test('ToolResult contracts distinguish success and user-safe errors', () => {
   assert.equal(err.ok, false);
   assert.equal(err.error.errorClass, 'JSONParseError');
   assert.ok(!err.userText.includes('hidden'));
+});
+
+// ============================================================
+// BUG 3: SSRF fake-ip — auto-detect proxy config to skip IP check
+// ============================================================
+
+test('validateUrl blocks private IPv6 without proxy config', async () => {
+  // fdfe:dcba:9876::288 is a ULA address, blocked by isPrivateIPv6
+  await assert.rejects(
+    () => validateUrl('https://[fdfe:dcba:9876::288]', { env: {} }),
+    /Private network target is blocked/,
+  );
+});
+
+test('validateUrl skips IP check when proxy is configured (HTTPS_PROXY)', async () => {
+  const env = { HTTPS_PROXY: 'http://127.0.0.1:8080' };
+  const result = await validateUrl('https://[fdfe:dcba:9876::288]', { env });
+  assert.equal(result.url.href, 'https://[fdfe:dcba:9876::288]/');
+});
+
+test('validateUrl skips IP check when proxy is configured (ALL_PROXY)', async () => {
+  const env = { ALL_PROXY: 'socks5h://127.0.0.1:1080' };
+  const result = await validateUrl('https://[fdfe:dcba:9876::288]', { env });
+  assert.equal(result.url.href, 'https://[fdfe:dcba:9876::288]/');
+});
+
+test('validateUrl still blocks localhost even with proxy configured', async () => {
+  const env = { ALL_PROXY: 'socks5h://127.0.0.1:1080' };
+  await assert.rejects(
+    () => validateUrl('https://localhost', { env }),
+    /Blocked hostname/,
+  );
+});
+
+test('validateUrl still blocks HTTP even with proxy configured', async () => {
+  const env = { ALL_PROXY: 'socks5h://127.0.0.1:1080' };
+  await assert.rejects(
+    () => validateUrl('http://example.com', { env }),
+    /HTTP is blocked/,
+  );
+});
+
+test('validateUrl does not skip IP check when only NO_PROXY is set', async () => {
+  const env = { NO_PROXY: 'localhost,127.0.0.1' };
+  await assert.rejects(
+    () => validateUrl('https://[fdfe:dcba:9876::288]', { env }),
+    /Private network target is blocked/,
+  );
 });

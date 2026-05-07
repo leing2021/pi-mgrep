@@ -2,7 +2,7 @@
 
 [简体中文](README_CN.md)
 
-A small, secure evidence gateway for [Pi Coding Agent](https://github.com/badlogic/pi-mono).
+A minimal, secure evidence gateway for [Pi Coding Agent](https://github.com/badlogic/pi-mono).
 
 `pi-search` gives agents four focused tools:
 
