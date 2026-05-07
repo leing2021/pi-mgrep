@@ -25,7 +25,7 @@ afterEach(() => resetAllCooldowns());
 test('detectProviderConfig returns correct flags from env', () => {
   resetAllCooldowns();
   const cfg = detectProviderConfig({
-    PI_SEARCH_SEARXNG_URL: 'http://100.101.197.40:8888',
+    PI_SEARCH_SEARXNG_URL: 'http://10.255.0.10:8888',
     PI_SEARCH_ALLOW_PRIVATE_SEARXNG: 'always',
     BRAVE_SEARCH_API_KEY: 'test-brave-key',
     TAVILY_API_KEY: 'test-tavily-key',
@@ -40,7 +40,7 @@ test('detectProviderConfig returns correct flags from env', () => {
 test('detectProviderConfig returns false when searxng not allowed', () => {
   resetAllCooldowns();
   const cfg = detectProviderConfig({
-    PI_SEARCH_SEARXNG_URL: 'http://100.101.197.40:8888',
+    PI_SEARCH_SEARXNG_URL: 'http://10.255.0.10:8888',
     BRAVE_SEARCH_API_KEY: 'test',
   });
   assert.equal(cfg.hasSearxng, false);
@@ -81,11 +81,11 @@ test('webSearch routes to searxng first when configured', async () => {
     query: 'test query',
     provider: 'auto',
     env: {
-      PI_SEARCH_SEARXNG_URL: 'http://100.101.197.40:8888',
+      PI_SEARCH_SEARXNG_URL: 'http://10.255.0.10:8888',
       PI_SEARCH_ALLOW_PRIVATE_SEARXNG: 'always',
     },
     fetch: async (url) => {
-      if (url.includes('100.101.197.40')) return makeJsonResponse({ results: [{ title: 'Searxng result', url: 'https://searxng.example', snippet: 'test' }] });
+      if (url.includes('10.255.0.10')) return makeJsonResponse({ results: [{ title: 'Searxng result', url: 'https://searxng.example', snippet: 'test' }] });
       throw new Error('unexpected');
     },
   });
@@ -100,7 +100,7 @@ test('webSearch falls back from searxng to brave when searxng unavailable', asyn
     query: 'test',
     provider: 'auto',
     env: {
-      PI_SEARCH_SEARXNG_URL: 'http://100.101.197.40:8888',
+      PI_SEARCH_SEARXNG_URL: 'http://10.255.0.10:8888',
       PI_SEARCH_ALLOW_PRIVATE_SEARXNG: 'always',
       BRAVE_SEARCH_API_KEY: 'key',
     },
@@ -196,14 +196,14 @@ test('webSearch redacts provider API keys from querySentTo details', async () =>
   const result = await webSearch({
     query: 'test',
     provider: 'tavily',
-    env: { TAVILY_API_KEY: 'tavily-secret-key' },
+    env: { TAVILY_API_KEY: 'test-tavily-redacted-value' },
     fetch: async (url) => {
-      assert.ok(url.includes('tavily-secret-key'));
+      assert.ok(url.includes('test-tavily-redacted-value'));
       return makeJsonResponse({ results: [{ title: 'Tavily result', url: 'https://tavily.example', snippet: 'test' }] });
     },
   });
   assert.equal(result.provider, 'tavily');
-  assert.ok(!JSON.stringify(result.details).includes('tavily-secret-key'));
+  assert.ok(!JSON.stringify(result.details).includes('test-tavily-redacted-value'));
   assert.ok(JSON.stringify(result.details.querySentTo).includes('REDACTED'));
 });
 
@@ -212,13 +212,13 @@ test('webSearch redacts provider API keys from failure details', async () => {
   const result = await webSearch({
     query: 'test',
     provider: 'tavily',
-    env: { TAVILY_API_KEY: 'tavily-secret-key' },
+    env: { TAVILY_API_KEY: 'test-tavily-redacted-value' },
     fetch: async (url) => {
       throw new Error(`failed URL: ${url}`);
     },
   });
   assert.equal(result.ok, false);
-  assert.ok(!JSON.stringify(result.error.details).includes('tavily-secret-key'));
+  assert.ok(!JSON.stringify(result.error.details).includes('test-tavily-redacted-value'));
   assert.ok(JSON.stringify(result.error.details).includes('REDACTED'));
 });
 

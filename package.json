@@ -2,7 +2,7 @@
   "name": "@leing2021/pi-search",
   "version": "0.6.0",
   "type": "module",
-  "description": "Minimal Secure Evidence Gateway for Pi Coding Agent — search, web_search, web_fetch, research_search. Task-aware provider routing, quota fallback, dual-LLM research, 4-layer abuse prevention.",
+  "description": "Minimal Secure Evidence Gateway for Pi Coding Agent — search, web_search, web_fetch, research_search. Intent-based provider routing, quota fallback, dual-LLM research, 4-layer abuse prevention.",
   "keywords": [
     "pi",
     "pi-package",
@@ -20,7 +20,6 @@
     "semantic-search",
     "pi-search"
   ],
-  "author": "Jason Le",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,8 +32,7 @@
     "extensions/",
     "src/",
     "README.md",
-    "README_CN.md",
-    "docs/test-report.md"
+    "README_CN.md"
   ],
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",

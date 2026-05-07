@@ -45,7 +45,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "web_search",
 		label: "Web Search",
-		description: "Search the web with task-aware routing. Providers: SearXNG (private) → Brave → Tavily → DuckDuckGo. Quota-aware fallback.",
+		description: "Search the web with intent-based routing. Providers: SearXNG (private) → Brave → Tavily → DuckDuckGo. Quota-aware fallback.",
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
 			provider: Type.Optional(Type.String({ description: "Force provider: auto|brave|tavily|searxng|duckduckgo (default: auto)" })),

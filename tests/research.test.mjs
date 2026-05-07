@@ -110,12 +110,12 @@ test('callSecondLlm sends only query + evidence to provider', async () => {
       capturedPrompt = opts?.body ?? '';
       return { ok: true, content: JSON.stringify({ choices: [{ message: { content: 'Verified answer' } }] }) };
     },
-    env: { OPENAI_API_KEY: 'sk-test' },
+    env: { OPENAI_API_KEY: 'test-openai-key' },
   });
   assert.equal(result.ok, true);
   // prompt should contain evidence but not env vars
   assert.ok(capturedPrompt.includes('SSRF prevention'));
-  assert.ok(!capturedPrompt.includes('sk-test'));
+  assert.ok(!capturedPrompt.includes('test-openai-key'));
 });
 
 test('callSecondLlm anti-leakage: env values not in prompt', async () => {
@@ -128,19 +128,19 @@ test('callSecondLlm anti-leakage: env values not in prompt', async () => {
       return { ok: true, content: JSON.stringify({ choices: [{ message: { content: 'result' } }] }) };
     },
     env: {
-      OPENAI_API_KEY: 'sk-secret-openai',
-      AWS_SECRET_ACCESS_KEY: 'aws-secret-xyz',
-      GITHUB_TOKEN: 'ghs-secret',
-      TAVILY_API_KEY: 'tavily-secret',
-      BRAVE_SEARCH_API_KEY: 'brave-secret',
+      OPENAI_API_KEY: 'test-openai-redacted-value',
+      AWS_SECRET_ACCESS_KEY: 'test-aws-redacted-value',
+      GITHUB_TOKEN: 'test-github-redacted-value',
+      TAVILY_API_KEY: 'test-tavily-redacted-value',
+      BRAVE_SEARCH_API_KEY: 'test-brave-redacted-value',
       PI_SEARCH_LLM_API_KEY_ENV: 'OPENAI_API_KEY',
     },
   });
-  assert.ok(!capturedBody.includes('sk-secret-openai'));
-  assert.ok(!capturedBody.includes('aws-secret-xyz'));
-  assert.ok(!capturedBody.includes('ghs-secret'));
-  assert.ok(!capturedBody.includes('tavily-secret'));
-  assert.ok(!capturedBody.includes('brave-secret'));
+  assert.ok(!capturedBody.includes('test-openai-redacted-value'));
+  assert.ok(!capturedBody.includes('test-aws-redacted-value'));
+  assert.ok(!capturedBody.includes('test-github-redacted-value'));
+  assert.ok(!capturedBody.includes('test-tavily-redacted-value'));
+  assert.ok(!capturedBody.includes('test-brave-redacted-value'));
 });
 
 test('callSecondLlm falls back to evidence only on timeout', async () => {
@@ -150,7 +150,7 @@ test('callSecondLlm falls back to evidence only on timeout', async () => {
     fetch: async () => {
       throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
     },
-    env: { OPENAI_API_KEY: 'sk-test' },
+    env: { OPENAI_API_KEY: 'test-openai-key' },
   });
   assert.equal(result.ok, false);
   assert.equal(result.errorClass, 'LlmTimeout');
@@ -227,7 +227,7 @@ test('researchSearch deep mode uses Tavily and optional LLM', async () => {
       PI_SEARCH_LLM_MODEL: 'gpt-4o-mini',
       PI_SEARCH_LLM_BASE_URL: 'https://api.openai.com/v1',
       PI_SEARCH_LLM_API_KEY_ENV: 'OPENAI_API_KEY',
-      OPENAI_API_KEY: 'sk-test',
+      OPENAI_API_KEY: 'test-openai-key',
     },
     webSearch: async (opts) => {
       if (opts.provider === 'tavily') {

@@ -10,6 +10,5 @@ node_modules/
 tests/.DS_Store
 tests/helpers/spike-*.mjs
 
-# Local docs are not published/committed, except public package docs.
-docs/*
-!docs/test-report.md
+# Local docs are not published/committed.
+docs/

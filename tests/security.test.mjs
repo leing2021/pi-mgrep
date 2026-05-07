@@ -19,13 +19,13 @@ test('getMinimalEnv rejects unknown profiles', () => {
 test('getMinimalEnv strips sensitive env keys for rg profile', () => {
   const env = getMinimalEnv('rg', {
     PATH: '/bin',
-    HOME: '/home/me',
+    HOME: '/tmp/pi-search-home',
     MXBAI_API_KEY: 'secret',
     AWS_SECRET_ACCESS_KEY: 'aws-secret',
     GITHUB_TOKEN: 'gh-secret',
   });
   assert.equal(env.PATH, '/bin');
-  assert.equal(env.HOME, '/home/me');
+  assert.equal(env.HOME, '/tmp/pi-search-home');
   assert.equal(env.MXBAI_API_KEY, undefined);
   assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
   assert.equal(env.GITHUB_TOKEN, undefined);
@@ -49,12 +49,12 @@ test('resolveSafePath allows outside cwd only with explicit opt-in and non-sensi
 
 test('validateUrl rejects HTTP by default and allows HTTPS', async () => {
   await assert.rejects(() => validateUrl('http://example.com'), /NetworkPolicyError/);
-  const result = await validateUrl('https://example.com');
-  assert.equal(result.url.href, 'https://example.com/');
+  const result = await validateUrl('https://1.1.1.1');
+  assert.equal(result.url.href, 'https://1.1.1.1/');
 });
 
 test('validateUrl rejects URL credentials', async () => {
-  await assert.rejects(() => validateUrl('https://user:pass@example.com'), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://user:pass@203.0.113.10'), /NetworkPolicyError/);
 });
 
 test('validateUrl rejects localhost and private networks', async () => {
@@ -62,20 +62,20 @@ test('validateUrl rejects localhost and private networks', async () => {
   await assert.rejects(() => validateUrl('https://127.0.0.1'), /NetworkPolicyError/);
   await assert.rejects(() => validateUrl('https://10.0.0.1'), /NetworkPolicyError/);
   await assert.rejects(() => validateUrl('https://192.168.1.1'), /NetworkPolicyError/);
-  await assert.rejects(() => validateUrl('https://100.101.197.40'), /NetworkPolicyError/);
+  await assert.rejects(() => validateUrl('https://10.255.0.10'), /NetworkPolicyError/);
   await assert.rejects(() => validateUrl('https://169.254.169.254'), /NetworkPolicyError/);
   await assert.rejects(() => validateUrl('https://[::1]'), /NetworkPolicyError/);
 });
 
 test('validateUrl allows exact private SearXNG origin only with explicit opt-in', async () => {
   const env = {
-    PI_SEARCH_SEARXNG_URL: 'http://100.101.197.40:8888',
+    PI_SEARCH_SEARXNG_URL: 'http://10.255.0.10:8888',
     PI_SEARCH_ALLOW_PRIVATE_SEARXNG: 'always',
   };
-  const result = await validateUrl('http://100.101.197.40:8888/search?q=test', { env, allowSearxngPrivate: true });
+  const result = await validateUrl('http://10.255.0.10:8888/search?q=test', { env, allowSearxngPrivate: true });
   assert.equal(result.privateNetworkException, 'explicit-searxng-origin');
   await assert.rejects(
-    () => validateUrl('http://100.101.197.41:8888/search?q=test', { env, allowSearxngPrivate: true }),
+    () => validateUrl('http://10.255.0.11:8888/search?q=test', { env, allowSearxngPrivate: true }),
     /NetworkPolicyError/,
   );
 });
