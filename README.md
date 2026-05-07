@@ -156,6 +156,38 @@ LOCAL_SEARCH:
 PI_SEARCH_ALLOW_OUTSIDE_CWD="always"
 ```
 
+Research LLM notes:
+
+- The prompt uses OpenAI as the default example.
+- `PI_SEARCH_LLM_API_KEY_ENV` is the name of the environment variable that stores the API key. It is not the API key itself.
+- For a local model, use an OpenAI-compatible API such as Ollama, LM Studio, or vLLM:
+
+```bash
+PI_SEARCH_LLM_PROVIDER="local-openai"
+PI_SEARCH_LLM_MODEL="<local-model-name>"
+PI_SEARCH_LLM_BASE_URL="http://<local-llm-host>:11434/v1"
+PI_SEARCH_LLM_API_KEY_ENV="LOCAL_LLM_API_KEY"
+LOCAL_LLM_API_KEY="<LOCAL_LLM_API_KEY_OR_DUMMY>"
+```
+
+Other OpenAI-compatible provider examples:
+
+```bash
+# OpenRouter
+PI_SEARCH_LLM_PROVIDER="openai"
+PI_SEARCH_LLM_MODEL="openai/gpt-4o-mini"
+PI_SEARCH_LLM_BASE_URL="https://openrouter.ai/api/v1"
+PI_SEARCH_LLM_API_KEY_ENV="OPENROUTER_API_KEY"
+OPENROUTER_API_KEY="<OPENROUTER_API_KEY>"
+
+# DeepSeek
+PI_SEARCH_LLM_PROVIDER="openai"
+PI_SEARCH_LLM_MODEL="deepseek-chat"
+PI_SEARCH_LLM_BASE_URL="https://api.deepseek.com/v1"
+PI_SEARCH_LLM_API_KEY_ENV="DEEPSEEK_API_KEY"
+DEEPSEEK_API_KEY="<DEEPSEEK_API_KEY>"
+```
+
 ## Project structure
 
 ```text

@@ -120,31 +120,31 @@ export PI_SEARCH_ALLOW_PRIVATE_SEARXNG="always"
 如果你希望一个新的 AI Agent 安装并配置 `pi-search`，可以复制下面这段：
 
 ```text
-Install and configure pi-search for Pi Coding Agent.
+为 Pi Coding Agent 安装并配置 pi-search。
 
-Installation:
+安装：
 pi install npm:@leing2021/pi-search
-Then restart pi or run /reload.
+然后重启 pi，或执行 /reload。
 
-Available tools:
+可用工具：
 - search({ query, path? })
 - web_search({ query, provider?, count? })
 - web_fetch({ url })
 - research_search({ query, mode?, maxSources? })
 
-Use these environment variables when needed:
+需要时使用以下环境变量：
 
-WEB_SEARCH:
+网页搜索：
 BRAVE_SEARCH_API_KEY="brave_xxx"
 TAVILY_API_KEY="tvly_xxx"
 FIRECRAWL_API_KEY="fc_xxx"
 PI_SEARCH_WEB_PROVIDER="auto"
 
-PRIVATE_SEARCH:
+私有搜索：
 PI_SEARCH_SEARXNG_URL="http://<private-searxng-host>:8888"
 PI_SEARCH_ALLOW_PRIVATE_SEARXNG="always"
 
-RESEARCH_LLM:
+研究 LLM：
 PI_SEARCH_LLM_ENABLED="always"
 PI_SEARCH_LLM_PROVIDER="openai"
 PI_SEARCH_LLM_MODEL="gpt-4o-mini"
@@ -152,8 +152,40 @@ PI_SEARCH_LLM_BASE_URL="https://api.openai.com/v1"
 PI_SEARCH_LLM_API_KEY_ENV="OPENAI_API_KEY"
 OPENAI_API_KEY="<OPENAI_API_KEY>"
 
-LOCAL_SEARCH:
+本地搜索：
 PI_SEARCH_ALLOW_OUTSIDE_CWD="always"
+```
+
+研究 LLM 说明：
+
+- 提示词里以 OpenAI 为例。
+- `PI_SEARCH_LLM_API_KEY_ENV` 填的是“保存密钥的环境变量名”，不是密钥本身。
+- 本地模型请使用 OpenAI-compatible API，例如 Ollama、LM Studio、vLLM：
+
+```bash
+PI_SEARCH_LLM_PROVIDER="local-openai"
+PI_SEARCH_LLM_MODEL="<local-model-name>"
+PI_SEARCH_LLM_BASE_URL="http://<local-llm-host>:11434/v1"
+PI_SEARCH_LLM_API_KEY_ENV="LOCAL_LLM_API_KEY"
+LOCAL_LLM_API_KEY="<LOCAL_LLM_API_KEY_OR_DUMMY>"
+```
+
+其他 OpenAI-compatible 服务示例：
+
+```bash
+# OpenRouter
+PI_SEARCH_LLM_PROVIDER="openai"
+PI_SEARCH_LLM_MODEL="openai/gpt-4o-mini"
+PI_SEARCH_LLM_BASE_URL="https://openrouter.ai/api/v1"
+PI_SEARCH_LLM_API_KEY_ENV="OPENROUTER_API_KEY"
+OPENROUTER_API_KEY="<OPENROUTER_API_KEY>"
+
+# DeepSeek
+PI_SEARCH_LLM_PROVIDER="openai"
+PI_SEARCH_LLM_MODEL="deepseek-chat"
+PI_SEARCH_LLM_BASE_URL="https://api.deepseek.com/v1"
+PI_SEARCH_LLM_API_KEY_ENV="DEEPSEEK_API_KEY"
+DEEPSEEK_API_KEY="<DEEPSEEK_API_KEY>"
 ```
 
 ## 项目结构
