@@ -9,6 +9,7 @@ import {
 	runCommand,
 	safeFetchText,
 	resolveSafePath,
+	validateUrl,
 } from "../src/security.ts";
 import {
 	webSearch,
@@ -253,7 +254,20 @@ export async function handleWebFetch(
 				content = result.text ?? "";
 				if (result.riskFlags) allRiskFlags.push(...result.riskFlags);
 			}
-		} catch {
+		} catch (localError) {
+			// Security gate: validate URL before Firecrawl fallback
+			// If the URL was rejected by security policy (HTTP, private IP, credentials),
+			// do NOT bypass via Firecrawl — the security decision applies to the URL itself.
+			try {
+				await validateUrl(params.url);
+			} catch {
+				return {
+					content: `[FetchError: failed to fetch ${params.url}]`,
+					trust: "untrusted",
+					details: { extractor: "failed", url: params.url, trust: "untrusted", riskFlags: allRiskFlags, apiKeyExposed: false },
+				};
+			}
+
 			if (firecrawlFn) {
 				try {
 					const fcResult = await firecrawlFn(params.url);

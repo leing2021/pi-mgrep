@@ -61,7 +61,26 @@ test('clipEvidence clips per-source to budget', () => {
   const result = clipEvidence(sources, { maxChars: 100, maxSources: 10 });
   assert.equal(result.truncated, true);
   assert.equal(result.sources.length, 1);
-  assert.ok(result.sources[0].text.length <= 100 + 50);
+  assert.ok(result.totalChars <= 100, `totalChars ${result.totalChars} exceeds maxChars 100`);
+});
+
+test('clipEvidence totalChars hard constraint: never exceeds maxChars', () => {
+  const sources = [
+    { id: '1', url: 'https://a.com', title: 'A', text: 'A'.repeat(5000) },
+    { id: '2', url: 'https://b.com', title: 'B', text: 'B'.repeat(5000) },
+    { id: '3', url: 'https://c.com', title: 'C', text: 'C'.repeat(5000) },
+  ];
+  const result = clipEvidence(sources, { maxChars: 6000, maxSources: 10 });
+  assert.ok(result.totalChars <= 6000, `totalChars ${result.totalChars} exceeds maxChars 6000`);
+  assert.ok(result.sources.length >= 1, 'should have at least one source');
+});
+
+test('clipEvidence hard constraint with small maxChars', () => {
+  const sources = [
+    { id: '1', url: 'https://a.com', title: 'A', text: 'A'.repeat(1000) },
+  ];
+  const result = clipEvidence(sources, { maxChars: 100, maxSources: 10 });
+  assert.ok(result.totalChars <= 100, `totalChars ${result.totalChars} exceeds maxChars 100`);
 });
 
 test('clipEvidence respects maxSources', () => {

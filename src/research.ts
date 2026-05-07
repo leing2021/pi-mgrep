@@ -73,8 +73,10 @@ export function isLlmEnabled(config: LlmConfig): boolean {
 function sanitizeEvidenceText(rawText: string, maxChars: number): { text: string; riskFlags: string[] } {
   const sanitized = sanitizeHtml(rawText);
   const clipped = truncateText(sanitized.text, maxChars);
+  // If truncation added a marker, slice to exact maxChars budget
+  const text = clipped.text.length > maxChars ? clipped.text.slice(0, maxChars) : clipped.text;
   return {
-    text: clipped.text,
+    text,
     riskFlags: sanitized.riskFlags,
   };
 }

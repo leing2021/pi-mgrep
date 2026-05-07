@@ -1,6 +1,6 @@
 {
   "name": "@leing2021/pi-search",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "type": "module",
   "description": "Minimal Secure Evidence Gateway for Pi Coding Agent — search, web_search, web_fetch, research_search. Intent-based provider routing, quota fallback, dual-LLM research, 4-layer abuse prevention.",
   "keywords": [
@@ -26,7 +26,8 @@
     "url": "git+https://github.com/leing2021/pi-search.git"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:integration": "node --experimental-strip-types tests/integration-test.mjs"
   },
   "files": [
     "extensions/",
@@ -34,9 +35,11 @@
     "README.md",
     "README_CN.md"
   ],
+  "dependencies": {
+    "typebox": "^1.1.38"
+  },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "typebox": "*"
+    "@mariozechner/pi-coding-agent": "*"
   },
   "pi": {
     "extensions": [

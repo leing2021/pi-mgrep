@@ -214,6 +214,69 @@ test('research_search tool: deep mode with LLM verification', async () => {
   assert.equal(result.details.llmUsed, true);
 });
 
+// ============================================================
+// Unit 2 Bug: web_fetch must not bypass URL security via Firecrawl fallback
+// ============================================================
+
+test('web_fetch tool: HTTP URL blocked even with Firecrawl configured', async () => {
+  let firecrawlCalled = false;
+  const result = await handleWebFetch({
+    url: 'http://example.com',
+  }, {
+    fetch: async () => { throw new Error('HTTP blocked by security'); },
+    firecrawl: async () => { firecrawlCalled = true; return { content: 'Should not reach here' }; },
+    firecrawlApiKey: 'test-key',
+  });
+  assert.equal(firecrawlCalled, false, 'Firecrawl should NOT be called for HTTP URL');
+  assert.equal(result.details.extractor, 'failed', `extractor should be 'failed', got '${result.details.extractor}'`);
+  assert.ok(result.content.includes('FetchError'), 'Content should indicate fetch error');
+});
+
+test('web_fetch tool: localhost hostname blocked even with Firecrawl configured', async () => {
+  let firecrawlCalled = false;
+  const result = await handleWebFetch({
+    url: 'https://localhost:9999',
+  }, {
+    fetch: async () => { throw new Error('localhost blocked'); },
+    firecrawl: async () => { firecrawlCalled = true; return { content: 'Should not reach here' }; },
+    firecrawlApiKey: 'test-key',
+  });
+  assert.equal(firecrawlCalled, false, 'Firecrawl should NOT be called for localhost');
+  assert.equal(result.details.extractor, 'failed', `extractor should be 'failed', got '${result.details.extractor}'`);
+});
+
+test('web_fetch tool: private IP behavior respects proxy config', async () => {
+  // In environments with proxy configured, validateUrl allows private IPs
+  // because requests go through proxy. The security gate still exists
+  // and blocks HTTP/credentials/localhost regardless of proxy.
+  let firecrawlCalled = false;
+  const result = await handleWebFetch({
+    url: 'https://192.168.1.1:9999',
+  }, {
+    fetch: async () => { throw new Error('connection refused'); },
+    firecrawl: async () => { firecrawlCalled = true; return { content: 'Firecrawl fallback result' }; },
+    firecrawlApiKey: 'test-key',
+  });
+  // With proxy: private IP passes validateUrl -> Firecrawl fallback is allowed
+  // Without proxy: private IP blocked by validateUrl -> Firecrawl is NOT called
+  // This test just verifies no crash either way
+  assert.ok(result.details.extractor === 'firecrawl' || result.details.extractor === 'failed',
+    `unexpected extractor: ${result.details.extractor}`);
+});
+
+test('web_fetch tool: URL credentials blocked even with Firecrawl configured', async () => {
+  let firecrawlCalled = false;
+  const result = await handleWebFetch({
+    url: 'https://user:pass@example.com',
+  }, {
+    fetch: async () => { throw new Error('credentials blocked'); },
+    firecrawl: async () => { firecrawlCalled = true; return { content: 'Should not reach here' }; },
+    firecrawlApiKey: 'test-key',
+  });
+  assert.equal(firecrawlCalled, false, 'Firecrawl should NOT be called for URL with credentials');
+  assert.equal(result.details.extractor, 'failed', `extractor should be 'failed', got '${result.details.extractor}'`);
+});
+
 test('all tools include apiKeyExposed: false in details', async () => {
   const ws = await handleWebSearch({ query: 'test', provider: 'auto' }, {
     webSearch: async () => ({

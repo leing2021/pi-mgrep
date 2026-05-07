@@ -258,6 +258,33 @@ test('searchSearxng maps response correctly', async () => {
   assert.equal(results[0].url, 'https://sx.com');
 });
 
+test('searchDuckDuckGo extracts results from real HTML with uddg redirect URLs', async () => {
+  resetAllCooldowns();
+  const html = `<html><body>
+    <div class="results">
+      <div class="result">
+        <h2 class="result__title">
+          <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.typescriptlang.org%2F&amp;rut=abc123">TypeScript: JavaScript With Syntax For Types</a>
+        </h2>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.typescriptlang.org%2F">TypeScript is a strongly typed programming language...</a>
+      </div>
+      <div class="result">
+        <h2 class="result__title">
+          <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Ftypescript">GitHub - microsoft/TypeScript</a>
+        </h2>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Ftypescript">TypeScript is a superset of JavaScript...</a>
+      </div>
+    </div>
+  </body></html>`;
+  const results = await searchDuckDuckGo({ baseUrl: 'https://html.duckduckgo.com' }, html);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].title, 'TypeScript: JavaScript With Syntax For Types');
+  assert.equal(results[0].url, 'https://www.typescriptlang.org/');
+  assert.equal(results[0].snippet, 'TypeScript is a strongly typed programming language...');
+  assert.equal(results[1].title, 'GitHub - microsoft/TypeScript');
+  assert.equal(results[1].url, 'https://github.com/typescript');
+});
+
 test('searchDuckDuckGo extracts results from HTML', async () => {
   resetAllCooldowns();
   const html = `<html><body>

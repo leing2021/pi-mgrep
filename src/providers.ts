@@ -177,20 +177,43 @@ export async function searchDuckDuckGo(
   _params: { baseUrl: string },
   html: string,
 ): Promise<SearchResult[] | null> {
-  const titlesFromHref = [...html.matchAll(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([^<]+)<\/a>/gi)];
+  function extractUrlFromHref(href: string): string | null {
+    const uddgMatch = href.match(/[?&]uddg=([^&]+)/);
+    if (uddgMatch) {
+      try { return decodeURIComponent(uddgMatch[1]); } catch { return null; }
+    }
+    if (href.startsWith('http')) return href;
+    return null;
+  }
+
+  const resultLinks = [...html.matchAll(/<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)];
   const snippetMatches = [...html.matchAll(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi)];
 
-  if (titlesFromHref.length === 0) return null;
+  // Fallback: if no result__a links found, try generic <a href="http..."> links
+  if (resultLinks.length === 0) {
+    const fallbackLinks = [...html.matchAll(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([^<]+)<\/a>/gi)];
+    if (fallbackLinks.length === 0) return null;
+    const fallbackResults: SearchResult[] = [];
+    for (let i = 0; i < fallbackLinks.length && fallbackResults.length < 10; i++) {
+      const match = fallbackLinks[i];
+      const url = match[1];
+      const titleRaw = match[2].replace(/<[^>]+>/g, '').trim();
+      if (url.startsWith('http') && titleRaw && !url.includes('duckduckgo') && !url.includes('html.duckduckgo')) {
+        fallbackResults.push({ title: titleRaw, url, snippet: '' });
+      }
+    }
+    return fallbackResults.length > 0 ? fallbackResults : null;
+  }
 
   const results: SearchResult[] = [];
-  for (let i = 0; i < titlesFromHref.length && results.length < 10; i++) {
-    const match = titlesFromHref[i];
-    const url = match[1];
+  for (let i = 0; i < resultLinks.length && results.length < 10; i++) {
+    const match = resultLinks[i];
+    const url = extractUrlFromHref(match[1]);
     const titleRaw = match[2].replace(/<[^>]+>/g, '').trim();
     const snippet = snippetMatches[i]
       ? snippetMatches[i][1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
       : '';
-    if (url.startsWith('http') && titleRaw && !url.includes('duckduckgo') && !url.includes('html.duckduckgo')) {
+    if (url && titleRaw && !url.includes('duckduckgo') && !url.includes('html.duckduckgo')) {
       results.push({ title: titleRaw, url, snippet });
     }
   }
